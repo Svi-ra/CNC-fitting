@@ -7,9 +7,18 @@ It is self-contained; nothing else needs to be on the module path.
 
 Component setup
 ---------------
-    input   B      Brep      access = Tree      (one part per branch)
-    output  MPR    -                            (one MPR program per branch)
-    output  INFO   -                            (one report line per part)
+    input   B      Brep      access = Tree   one part per branch
+    output  MPR    -                         one whole program per branch,
+                                             CRLF already embedded
+    output  LINES  -                         the same program, one line per
+                                             item, no line endings attached
+    output  INFO   -                         one report line per part
+
+Use **MPR** with an exporter that writes the text verbatim, and **LINES** with
+one that joins a list of lines and applies its own line ending (ShapeDiver).
+Feeding ShapeDiver the single MPR string is what makes its CRLF setting look
+like it is being ignored: the newlines are already inside the string, so there
+is nothing for it to join.
 
 Takes raw solids with no attached data: the panel size and every drilling are
 recognised from the geometry itself.
@@ -53,6 +62,20 @@ LONG_X = True       # turn the part so its long side runs along X
 FLIP = True         # turn the part over if it would be drilled from below
 CONTOUR = True      # emit a contour when the outline is not a rectangle
 SAMPLES = 96        # points sampled per face loop
+
+# Line endings. woodWOP splits a program on CRLF: an LF-only file is read as
+# one unparseable line and opens silently as an empty default panel.
+#
+#   MPR output   one string per branch, with EOL already embedded in it.
+#                Use this with an exporter that writes the text verbatim.
+#   LINES output the same program as one line per item, carrying no line
+#                endings at all. Use this with an exporter that joins a list
+#                of lines itself (ShapeDiver) -- its CRLF setting then has
+#                something to act on, and cannot conflict with ours.
+#
+# Set EOL to "\n" if the export path adds its own CRLF, otherwise the file
+# ends up with CR CR LF.
+EOL = "\r\n"
 
 FACE_TOL = 0.02     # "breaks out through this face", mm
 GEO_TOL = 1e-4
@@ -184,8 +207,13 @@ class Part(object):
         self.notes = []
 
 
-def render_mpr(part):
-    """Build the MPR program text. Newlines are LF here -- convert on write."""
+def mpr_lines(part):
+    """The MPR program as a list of lines, with no line endings attached.
+
+    The single-space entries are the block separators the format requires --
+    every production woodWOP file has them. Do not let an export path strip
+    trailing whitespace.
+    """
     out = []
     a = out.append
     a("[H")
@@ -247,7 +275,13 @@ def render_mpr(part):
     while out and out[-1] == SEP:
         out.pop()               # '!' follows the last block directly
     a("!")
-    return "\n".join(out) + "\n"
+    a("")                       # so a join reproduces the trailing line end
+    return out
+
+
+def render_mpr(part):
+    """The MPR program as one string, line endings already embedded."""
+    return EOL.join(mpr_lines(part))
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +675,7 @@ def branches_of(tree):
 
 
 MPR = DataTree[object]()
+LINES = DataTree[object]()
 INFO = DataTree[object]()
 
 if UNITS is not None and UNITS != Rhino.UnitSystem.Millimeters:
@@ -653,7 +688,10 @@ for path, items in branches_of(B):
             continue
         try:
             part = brep_to_part(brep)
-            MPR.Add(render_mpr(part), path)
+            lines = mpr_lines(part)
+            MPR.Add(EOL.join(lines), path)
+            for line in lines:
+                LINES.Add(line, path)
             INFO.Add(describe(part), path)
         except Exception as exc:
             MPR.Add(None, path)

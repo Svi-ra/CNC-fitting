@@ -9,6 +9,41 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.2.2] — 2026-09-04
+
+### Fixed
+
+- **ShapeDiver ignored its CRLF setting when exporting the component's
+  output.** `MPR` was one string per branch with LF newlines already inside
+  it, so an exporter that applies a line ending while joining a *list* of
+  lines had nothing to join and wrote the embedded LFs verbatim — producing
+  exactly the empty-blank failure of 0.1.1, one layer further out.
+  - `MPR` now carries the line ending itself, CRLF by default, set by the new
+    `EOL` setting.
+  - New `LINES` output: the same program as one line per item with no line
+    endings attached, for exporters that join and apply their own ending.
+    Use `LINES` with ShapeDiver and `MPR` with anything that writes verbatim;
+    using `MPR` with a converting exporter yields CR CR LF, so `EOL` can be
+    set to LF for that case.
+  - `render_mpr` is now a thin join over the new `mpr_lines`, which is the
+    single source of the program text.
+
+### Notes
+
+- The "double space between blocks" seen when copying the output is not in
+  the data. Checked byte for byte: neither the generated programs nor the
+  production files in `Examples/PAL_8681_SM_Alb_Diamant/` contain a double
+  space anywhere. The block separator is a line holding one space, required
+  by the format and present in every real woodWOP program — an export path
+  that trims trailing whitespace will break the file.
+
+### Verification
+
+- `MPR` output for `Noptiera-1.dxf`'s features: 152 CRLF, zero bare LF, and
+  byte-identical to `Examples/CAD-models/MPR/Noptiera-1.mpr`.
+- `LINES` holds 153 items, none containing a line ending, and joining them
+  with `EOL` reproduces `MPR` exactly.
+
 ## [0.2.1] — 2026-09-04
 
 ### Changed

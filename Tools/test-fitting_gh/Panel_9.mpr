@@ -1,0 +1,109 @@
+[H
+VERSION="4.0 Alpha"
+INCH="0"
+OP="0"
+FM="1"
+FW="700"
+VIEW="NOMIRROR"
+_BSX=358.000000
+_BSY=138.000000
+_BSZ=18.000000
+ 
+<100 \WerkStck\
+LA="358"
+BR="138"
+DI="18"
+FNX="0"
+FNY="0"
+AX="0"
+AY="0"
+ 
+<102 \BohrVert\
+XA="12.5"
+YA="61"
+TI="8.5"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="89.5"
+YA="38"
+TI="14"
+DU="8"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="99"
+YA="99"
+TI="18"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="121.5"
+YA="38"
+TI="8.5"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="205.5"
+YA="38"
+TI="14"
+DU="8"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="237.5"
+YA="38"
+TI="8.5"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="259"
+YA="99"
+TI="18"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="345.5"
+YA="61"
+TI="8.5"
+DU="5"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+!
+

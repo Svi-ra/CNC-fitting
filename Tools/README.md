@@ -119,8 +119,29 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | | Name | Type | Access |
 | --- | --- | --- | --- |
 | input | `B` | Brep | **Tree** — one part per branch |
-| output | `MPR` | — | one MPR program as text per branch |
+| output | `MPR` | — | one whole program per branch, CRLF already embedded |
+| output | `LINES` | — | the same program, one line per item, no line endings |
 | output | `INFO` | — | one report line per part |
+
+### Which output to use
+
+**`MPR`** when the export path writes the text verbatim.
+
+**`LINES`** when the exporter joins a list of lines and applies its own line
+ending — ShapeDiver, for instance. Handing ShapeDiver the single `MPR` string
+is what makes its CRLF setting look like it is being ignored: the newlines are
+already inside the string, so there is nothing for it to join. `LINES` carries
+no line endings at all, so the setting works as intended.
+
+Never use both at once. If an exporter converts line endings *and* you feed it
+`MPR`, the file ends up with CR CR LF — set `EOL` to `\n` in that case, or switch to `LINES`.
+
+### The single-space lines are load bearing
+
+The MPR format separates blocks with a line containing one space, and every
+program in `Examples/PAL_8681_SM_Alb_Diamant/` has them. They look like stray
+whitespace when you copy the text out of a panel, but they are required.
+**Do not let the export path trim trailing whitespace.**
 
 **Parts are expected to arrive lying flat in the world XY plane**, thickness
 along Z. Nothing is ever rotated out of that plane. A part fed in standing on
