@@ -11,6 +11,13 @@ Thumbs.db
 desktop.ini
 *~
 
+# Scratch files dropped next to the tools for a quick test.
+# dxf2mpr.cmd writes its output into an MPR/ folder beside what was dropped.
+/Tools/*.dxf
+/Tools/*.dwg
+/Tools/*.mpr
+/Tools/MPR/
+
 # CAD lock and temp files
 *.dwl
 *.dwl2
