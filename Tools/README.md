@@ -122,12 +122,27 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | output | `MPR` | — | one MPR program as text per branch |
 | output | `INFO` | — | one report line per part |
 
-It takes raw solids with no attached data and recognises the rest: the largest
-planar face defines the panel plane, its longest straight edge defines X, the
-part is turned over if all the vertical drilling would otherwise come from
-underneath, and cylindrical faces become drillings classified by which face
-they break out through. Behaviour is tuned by the `SETTINGS` block at the top
-of the file (`SNAP`, `MAX_DIA`, `BM_VERT`, `THICKNESS`, `ORIENT`, `CONTOUR`).
+**Parts are expected to arrive lying flat in the world XY plane**, thickness
+along Z. Nothing is ever rotated out of that plane. A part fed in standing on
+edge is reported in `INFO` as a `WARNING` rather than quietly corrected,
+because turning it would contradict the layout the definition produced.
+
+Beyond that it takes raw solids with no attached data and recognises the rest:
+the world bounding box gives the panel size, cylindrical faces become
+drillings classified by which face they break out through, and the top face
+outline becomes a contour when it is not simply the bounding rectangle.
+
+Two in-plane adjustments are on by default and are pure rotations about Z or
+about X by 180 degrees, so the part stays flat either way:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `LONG_X` | on | turn the part 90 degrees so its long side runs along X, as `LA`/`_BSX` expects |
+| `FLIP` | on | turn the part over when every vertical bore would otherwise be drilled from underneath |
+
+Set either to `False` in the `SETTINGS` block if the definition already places
+parts exactly as they should be machined. The rest of that block is `SNAP`,
+`MAX_DIA`, `BM_VERT`, `THICKNESS` and `CONTOUR`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
 `open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason in the

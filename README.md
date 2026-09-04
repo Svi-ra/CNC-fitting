@@ -55,10 +55,11 @@ stay interchangeable.
 ## Straight from Grasshopper
 
 `Tools/gh_brep2mpr.py` is the same MPR writer behind a Rhino 8 Script
-component: feed it a data tree of raw Breps (one part per branch) and it
-returns one MPR program as text per branch. No DXF, no ACIS decoding — Rhino
-already holds the geometry, so the component reads cylinders straight off the
-Brep faces. See [Tools/README.md](Tools/README.md#grasshopper-component).
+component: feed it a data tree of raw Breps (one part per branch, already
+lying flat in XY) and it returns one MPR program as text per branch. No DXF,
+no ACIS decoding — Rhino already holds the geometry, so the component reads
+cylinders straight off the Brep faces. See
+[Tools/README.md](Tools/README.md#grasshopper-component).
 
 ## Documentation
 

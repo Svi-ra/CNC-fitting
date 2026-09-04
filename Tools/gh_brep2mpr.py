@@ -11,13 +11,17 @@ Component setup
     output  MPR    -                            (one MPR program per branch)
     output  INFO   -                            (one report line per part)
 
-Takes raw solids with no attached data: the panel size, its orientation and
-every drilling are recognised from the geometry itself.
+Takes raw solids with no attached data: the panel size and every drilling are
+recognised from the geometry itself.
 
-    - the largest planar face defines the panel plane; its normal becomes Z
-    - the long side of the part becomes X
+**Parts are assumed to arrive lying flat in the world XY plane** — thickness
+along Z. Nothing is rotated out of that plane; a part that is not flat is
+reported in INFO rather than corrected.
+
+    - the world bounding box gives the panel size
+    - the long side of the part is turned to X (LONG_X)
     - the part is turned over if all the vertical drilling would otherwise
-      come from underneath
+      come from underneath (FLIP)
     - cylindrical faces become drillings, classified by where they break out:
         along Z, open at the top      -> <102 \BohrVert\
         along Z, open at the bottom   -> <131 \UfluBohr\
@@ -34,7 +38,6 @@ program as one unparseable line and silently opens an empty default panel.
 import math
 
 import Rhino
-import Rhino.Geometry as rg
 from Grasshopper import DataTree
 from Grasshopper.Kernel.Data import GH_Path
 
@@ -46,7 +49,8 @@ SNAP = 0.0          # round drill diameters to this step (0 = leave exact)
 MAX_DIA = 60.0      # larger round openings are not treated as drillings
 BM_VERT = "LS"      # drill mode for vertical bores: LS SS LSL SSS
 THICKNESS = None    # force a thickness in mm, or None to measure it
-ORIENT = True       # lay the part flat, long side along X, drilling upwards
+LONG_X = True       # turn the part so its long side runs along X
+FLIP = True         # turn the part over if it would be drilled from below
 CONTOUR = True      # emit a contour when the outline is not a rectangle
 SAMPLES = 96        # points sampled per face loop
 
@@ -108,15 +112,7 @@ def canonical_axis(a):
     return a
 
 
-# axis-aligned rotations used to lay a part down (all proper rotations)
-
-def rot_x90(p):
-    return (p[0], -p[2], p[1])
-
-
-def rot_y90(p):
-    return (-p[2], p[1], p[0])
-
+# in-plane rotations: both keep the part flat in XY (proper rotations)
 
 def rot_z90(p):
     return (p[1], -p[0], p[2])
@@ -342,67 +338,14 @@ def loop_segments(face, notes):
     return segs
 
 
-def part_plane(brep, notes):
-    """Panel plane from the largest planar face; X along its longest edge."""
-    best_area = -1.0
-    best = None
-    for face in brep.Faces:
-        ok, pl = face.TryGetPlane(TOL)
-        if not ok:
-            continue
-        crv = face.OuterLoop.To3dCurve()
-        if crv is None:
-            continue
-        amp = rg.AreaMassProperties.Compute(crv)
-        area = amp.Area if amp else 0.0
-        if area > best_area:
-            best_area = area
-            best = (face, pl)
-    if best is None:
-        notes.append("no planar face found - using the world XY plane")
-        return rg.Plane.WorldXY
-
-    face, pl = best
-    normal = rg.Vector3d(*face_normal(face))
-
-    # X along the longest straight edge of that face, so the part lands square
-    xdir = None
-    longest = 0.0
-    for trim in face.OuterLoop.Trims:
-        edge = trim.Edge
-        if edge is None or not edge.IsLinear(TOL):
-            continue
-        v = vsub(p3(edge.PointAtEnd), p3(edge.PointAtStart))
-        if vlen(v) > longest:
-            longest = vlen(v)
-            xdir = v
-    if xdir is None:
-        plane = rg.Plane(pl.Origin, normal)
-    else:
-        xv = rg.Vector3d(*xdir)
-        # y = n x x keeps the frame right handed, so Z stays the face normal
-        plane = rg.Plane(pl.Origin, xv,
-                         rg.Vector3d.CrossProduct(normal, xv))
-    if not plane.IsValid:
-        plane = rg.Plane(pl.Origin, normal)
-    return plane
-
-
 def read_brep(brep, notes):
-    """Everything we machine, expressed in the panel plane's coordinates."""
-    plane = part_plane(brep, notes)
-    ox, xa = p3(plane.Origin), p3(plane.XAxis)
-    ya, za = p3(plane.YAxis), p3(plane.ZAxis)
+    """Everything we machine, in world coordinates.
 
-    def local(pt):
-        d = vsub(pt, ox)
-        return (vdot(d, xa), vdot(d, ya), vdot(d, za))
-
-    def local_dir(v):
-        return (vdot(v, xa), vdot(v, ya), vdot(v, za))
-
-    # accurate extents straight from Rhino, in plane coordinates
-    box = brep.GetBoundingBox(plane)
+    The part is taken to be lying flat already: thickness along Z. A part that
+    clearly is not flat is reported rather than rotated, because turning it
+    would silently contradict the layout the definition produced.
+    """
+    box = brep.GetBoundingBox(True)          # accurate, world aligned
     corners = [(x, y, z)
                for x in (box.Min.X, box.Max.X)
                for y in (box.Min.Y, box.Max.Y)
@@ -411,22 +354,20 @@ def read_brep(brep, notes):
     cylinders = []
     planars = []
     for face in brep.Faces:
-        srf = face.UnderlyingSurface()
-        ok, cyl = srf.TryGetCylinder(TOL)
+        ok, cyl = face.UnderlyingSurface().TryGetCylinder(TOL)
         if ok:
-            pts = [local(p) for p in loop_points(face)]
+            pts = loop_points(face)
             if not pts:
                 continue
-            axis = canonical_axis(local_dir(p3(cyl.Axis)))
-            centre = local(p3(cyl.Center))
+            axis = canonical_axis(p3(cyl.Axis))
+            centre = p3(cyl.Center)
             base = vsub(centre, vmul(axis, vdot(centre, axis)))
             ts = [vdot(p, axis) for p in pts]
             cylinders.append((axis, base, cyl.Radius, min(ts), max(ts)))
             continue
         ok, _pl = face.TryGetPlane(TOL)
         if ok:
-            planars.append((local_dir(face_normal(face)),
-                            loop_segments(face, notes)))
+            planars.append((face_normal(face), loop_segments(face, notes)))
 
     holes = []
     for axis, base, radius, tmin, tmax in _merge(cylinders):
@@ -434,10 +375,6 @@ def read_brep(brep, notes):
             continue
         holes.append(Hole(vadd(base, vmul(axis, tmin)),
                           vadd(base, vmul(axis, tmax)), 2.0 * radius))
-
-    for _n, segs in planars:
-        for s in segs:
-            s.transform(local)
 
     return corners, holes, planars
 
@@ -483,34 +420,27 @@ def _apply(fn, corners, holes, planars):
     return corners
 
 
-def orient(corners, holes, planars, notes):
-    """Lay the part flat, long side along X, drilling from above."""
-    if ORIENT:
-        x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
-        dims = [x1 - x0, y1 - y0, z1 - z0]
-        thin = min(range(3), key=lambda i: dims[i])
-        others = sorted(d for i, d in enumerate(dims) if i != thin)
-        if thin != 2 and dims[thin] < 0.6 * others[0]:
-            corners = _apply(rot_y90 if thin == 0 else rot_x90,
-                             corners, holes, planars)
-            notes.append("laid flat (%s was the thickness direction)"
-                         % "XYZ"[thin])
+def place(corners, holes, planars, notes):
+    """Long side along X, drilling from above, part on the zero point.
 
-        x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
+    Both rotations are about Z or about X by 180 degrees, so the part stays
+    flat in XY either way.
+    """
+    if LONG_X:
+        x0, y0, _z0, x1, y1, _z1 = _bbox(corners, holes)
         if (x1 - x0) < (y1 - y0) - GEO_TOL:
             corners = _apply(rot_z90, corners, holes, planars)
             notes.append("turned 90 deg so the long side runs along X")
 
-        x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
+    if FLIP:
+        _x0, _y0, z0, _x1, _y1, z1 = _bbox(corners, holes)
         top = bot = 0
         for h in holes:
             if abs(abs(h.axis()[2]) - 1.0) > 1e-3:
                 continue
-            hi = max(h.p0[2], h.p1[2])
-            lo = min(h.p0[2], h.p1[2])
-            if abs(hi - z1) <= FACE_TOL:
+            if abs(max(h.p0[2], h.p1[2]) - z1) <= FACE_TOL:
                 top += 1
-            elif abs(lo - z0) <= FACE_TOL:
+            elif abs(min(h.p0[2], h.p1[2]) - z0) <= FACE_TOL:
                 bot += 1
         if bot and not top:
             corners = _apply(rot_x180, corners, holes, planars)
@@ -638,13 +568,30 @@ def outline(planars, part):
     return elems
 
 
+def check_flat(part):
+    """The script assumes the part already lies flat: thickness along Z.
+
+    Nothing is rotated out of plane to fix it -- that would contradict the
+    layout the definition produced -- but a part fed in on edge would quietly
+    yield a program with the wrong size and the wrong drilling, so say so.
+    """
+    dims = (part.lx, part.ly, part.lz)
+    thin = min(range(3), key=lambda i: dims[i])
+    if thin != 2 and dims[thin] < 0.6 * sorted(dims)[1]:
+        part.notes.append(
+            "WARNING: this part is not lying flat in XY - its thinnest "
+            "direction is %s (%s mm), so DI reads %s mm. Size and drilling "
+            "below are almost certainly wrong."
+            % ("XYZ"[thin], fnum(dims[thin]), fnum(part.lz)))
+
+
 def brep_to_part(brep):
     part = Part()
     if brep is None or not brep.IsValid:
         raise ValueError("invalid Brep")
 
     corners, holes, planars = read_brep(brep, part.notes)
-    corners = orient(corners, holes, planars, part.notes)
+    corners = place(corners, holes, planars, part.notes)
 
     x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
     part.lx, part.ly = x1 - x0, y1 - y0
@@ -652,6 +599,7 @@ def brep_to_part(brep):
     if part.lx < 1.0 or part.ly < 1.0 or part.lz < 0.5:
         raise ValueError("implausible part size %s x %s x %s mm"
                          % (fnum(part.lx), fnum(part.ly), fnum(part.lz)))
+    check_flat(part)
 
     for hole in holes:
         emit_hole(part, hole)

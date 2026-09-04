@@ -9,6 +9,37 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.2.1] — 2026-09-04
+
+### Changed
+
+- `Tools/gh_brep2mpr.py` now assumes parts already lie flat in the world XY
+  plane, thickness along Z, and never rotates anything out of that plane.
+  - Dropped the panel-plane detection: the largest-planar-face search, the
+    longest-edge search for X, the plane construction and the remapping of
+    every point and direction into plane coordinates. Sizes now come straight
+    from the world bounding box, and `Rhino.Geometry` is no longer needed at
+    all.
+  - `ORIENT` is replaced by two independent settings, `LONG_X` (turn the long
+    side onto X) and `FLIP` (turn the part over when all vertical drilling
+    would come from underneath). Both are rotations about Z or about X by 180
+    degrees, so the part stays flat either way.
+  - A part that is not lying flat is now reported in `INFO` as a `WARNING`
+    naming the offending direction and the resulting `DI`, instead of being
+    silently rotated. Correcting it would contradict the layout the
+    definition produced, and a wrong `DI` is otherwise easy to miss.
+
+### Verification
+
+- Still renders a program byte-identical to
+  `Examples/CAD-models/MPR/Noptiera-1.mpr` from the features `dxf2mpr.py`
+  recovers from `Noptiera-1.dxf`.
+- New checks: a flat part with X shorter than Y keeps its thickness in Z and
+  gets its long side turned onto X; a part fed in standing on edge raises the
+  warning rather than being rotated. The earlier checks (turn-over, all four
+  horizontal directions, filleted outline, plain rectangle, and the three
+  guards) all still pass.
+
 ## [0.2.0] — 2026-09-04
 
 ### Added
