@@ -1,0 +1,185 @@
+[H
+VERSION="4.0 Alpha"
+INCH="0"
+OP="0"
+FM="1"
+FW="700"
+VIEW="NOMIRROR"
+_BSX=364.000000
+_BSY=144.000000
+_BSZ=18.000000
+ 
+<100 \WerkStck\
+LA="364"
+BR="144"
+DI="18"
+FNX="0"
+FNY="0"
+AX="0"
+AY="0"
+ 
+<102 \BohrVert\
+XA="34"
+YA="71.5"
+TI="14"
+DU="15"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="100"
+YA="34"
+TI="14"
+DU="15"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="265"
+YA="34"
+TI="14"
+DU="15"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="330"
+YA="72.5"
+TI="14"
+DU="15"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<103 \BohrHoriz\
+XA="0"
+YA="71.5"
+ZA="9"
+DU="8"
+TI="27.932"
+BM="XP"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="49"
+YA="144"
+ZA="9"
+DU="4.5"
+TI="32"
+BM="YM"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="81"
+YA="144"
+ZA="9"
+DU="8"
+TI="18"
+BM="YM"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="100"
+YA="0"
+ZA="9"
+DU="8"
+TI="27.932"
+BM="YP"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="132"
+YA="0"
+ZA="9"
+DU="8"
+TI="18"
+BM="YP"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="265"
+YA="0"
+ZA="9"
+DU="8"
+TI="27.932"
+BM="YP"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="297"
+YA="0"
+ZA="9"
+DU="8"
+TI="18"
+BM="YP"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="314"
+YA="144"
+ZA="9"
+DU="4.5"
+TI="32"
+BM="YM"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="346"
+YA="144"
+ZA="9"
+DU="8"
+TI="18"
+BM="YM"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="364"
+YA="72.5"
+ZA="9"
+DU="8"
+TI="27.932"
+BM="XM"
+AN="1"
+AB="0"
+F_="STANDARD"
+ 
+<103 \BohrHoriz\
+XA="364"
+YA="104.5"
+ZA="9"
+DU="8"
+TI="18"
+BM="XM"
+AN="1"
+AB="0"
+F_="STANDARD"
+!

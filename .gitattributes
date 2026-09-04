@@ -1,0 +1,25 @@
+# Default: let Git decide, normalise to LF in the repository.
+* text=auto
+
+# ---------------------------------------------------------------------------
+# Machine files MUST be checked out with CRLF.
+# woodWOP splits an MPR on CRLF; an LF-only program is read as one unparseable
+# line and opens silently as an empty default blank. See CHANGELOG 0.1.1.
+# ---------------------------------------------------------------------------
+*.mpr  text eol=crlf
+*.MPR  text eol=crlf
+*.var  text eol=crlf
+*.cmd  text eol=crlf
+
+# Source and documentation: LF.
+*.py   text eol=lf
+*.md   text eol=lf
+*.csv  text eol=crlf
+
+# Byte-for-byte, no end-of-line conversion of any kind.
+*.dxf     -text
+*.dxfbak  -text
+*.ktrx    -text
+*.dwg     binary
+*.gh      binary
+*.png     binary

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*~
+
+# CAD lock and temp files
+*.dwl
+*.dwl2
+*.sv$
+*.ac$
