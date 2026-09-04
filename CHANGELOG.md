@@ -7,7 +7,72 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
 refer to the tooling in `Tools/`; the reference material in `Docs/` and
 `Examples/` is inventoried in [MANIFEST.md](MANIFEST.md).
 
-This project is not under version control, so entries are maintained by hand.
+Repository: https://github.com/Svi-ra/CNC-fitting
+
+## [0.2.0] — 2026-09-04
+
+### Added
+
+- `Tools/gh_brep2mpr.py` — Grasshopper Script component (Rhino 8, Python 3).
+  Takes a data tree of raw Breps, one part per branch, and returns one MPR
+  program as text per branch plus a per-part report. Self-contained: paste it
+  into a single Script component, nothing needs to be on the module path.
+  - Recognises everything from the geometry alone, with no attached data:
+    the largest planar face gives the panel plane, its longest straight edge
+    gives X, and cylindrical faces become drillings classified by which face
+    they break out through.
+  - Uses `Surface.TryGetCylinder` and `Curve.TryGetArc` instead of the
+    NURBS fitting in `dxf2mpr.py`, so roughly 600 lines of DXF reading and
+    ACIS decoding are simply not needed — Rhino already holds the Brep.
+  - Same orientation handling as the CLI: laid flat, long side along X,
+    turned over when all vertical drilling would come from underneath.
+  - Emits text, not files, so the writing step (and its CRLF requirement)
+    stays under the definition's control.
+
+### Verification
+
+- Driven with the exact features `dxf2mpr.py` recovers from `Noptiera-1.dxf`,
+  the component renders a program **byte-identical** to
+  `Examples/CAD-models/MPR/Noptiera-1.mpr`.
+- Separately exercised: turn-over of a part drilled only from below; all four
+  horizontal drilling directions (`XP`/`XM`/`YP`/`YM`); a filleted outline
+  producing a contour with the correct `DS`; a plain rectangle correctly
+  producing no contour; and the guards for closed internal bores, bores over
+  `MAX_DIA`, and slanted bores.
+- The RhinoCommon calls themselves are **not** covered by these tests —
+  they were stubbed out. Run the component on one known part and compare
+  against the DXF route before trusting it on a batch.
+
+## [0.1.1] — 2026-09-04
+
+### Fixed
+
+- **Generated programs opened in woodWOP as an empty 1500 × 120 × 19 blank
+  with no machining.** The files were written with LF line endings; woodWOP
+  splits an MPR on CRLF, so the whole program was read as one unparseable
+  line and the editor fell back to its default blank without reporting an
+  error. All MPR files in `Docs`-adjacent examples — production and
+  woodWOP-authored alike — are CRLF. `dxf2mpr.py` now writes CRLF.
+- `check_mpr.py` could not see the fault: it read files in text mode, where
+  Python normalises line endings. It now reads bytes and rejects LF-only and
+  mixed-ending files.
+
+### Changed
+
+- `!` is written immediately after the last block, with no separator line
+  before it, as real woodWOP files do.
+- Contour element coordinates (`X`, `Y`, `R` of `KP`/`KL`/`KA`) are written
+  with four decimals, matching woodWOP's own formatting; `Z`, `KO` and `DS`
+  stay plain integers.
+
+### Verification
+
+- `Examples/CAD-models/MPR/Noptiera-1.mpr` is now structurally identical to
+  the production file `Examples/PAL_8681_SM_Alb_Diamant/15_1.MPR`: same CRLF
+  encoding, same data-head lines, same `WerkStck` block, same `BohrVert`
+  parameter names in the same order.
+- All 12 regenerated programs pass `check_mpr.py`, which now includes the
+  line-ending check.
 
 ## [0.1.0] — 2026-09-04
 
@@ -101,37 +166,6 @@ woodWOP DXF-Import.
   180°. An earlier reading inferred from `Examples/PAL_8681_SM_Alb_Diamant/15_1.MPR`
   had this reversed; the spec was taken as the authority.
 - Output is written LF / cp1252. (Wrong — corrected in 0.1.1.)
-
-## [0.1.1] — 2026-09-04
-
-### Fixed
-
-- **Generated programs opened in woodWOP as an empty 1500 × 120 × 19 blank
-  with no machining.** The files were written with LF line endings; woodWOP
-  splits an MPR on CRLF, so the whole program was read as one unparseable
-  line and the editor fell back to its default blank without reporting an
-  error. All MPR files in `Docs`-adjacent examples — production and
-  woodWOP-authored alike — are CRLF. `dxf2mpr.py` now writes CRLF.
-- `check_mpr.py` could not see the fault: it read files in text mode, where
-  Python normalises line endings. It now reads bytes and rejects LF-only and
-  mixed-ending files.
-
-### Changed
-
-- `!` is written immediately after the last block, with no separator line
-  before it, as real woodWOP files do.
-- Contour element coordinates (`X`, `Y`, `R` of `KP`/`KL`/`KA`) are written
-  with four decimals, matching woodWOP's own formatting; `Z`, `KO` and `DS`
-  stay plain integers.
-
-### Verification
-
-- `Examples/CAD-models/MPR/Noptiera-1.mpr` is now structurally identical to
-  the production file `Examples/PAL_8681_SM_Alb_Diamant/15_1.MPR`: same CRLF
-  encoding, same data-head lines, same `WerkStck` block, same `BohrVert`
-  parameter names in the same order.
-- All 12 regenerated programs pass `check_mpr.py`, which now includes the
-  line-ending check.
 
 ## [0.0.1] — 2026-09-03
 

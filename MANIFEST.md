@@ -7,8 +7,8 @@ programs.
 
 - **Root:** `D:\CNC-fitting`
 - **Machine format:** woodWOP MPR 4.x (HOMAG/WEEKE), millimetres
-- **Not a git repository.** Version history is tracked by hand in
-  [CHANGELOG.md](CHANGELOG.md).
+- **Repository:** https://github.com/Svi-ra/CNC-fitting (public), branch
+  `main`. Change history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Layout
 
@@ -23,7 +23,7 @@ CNC-fitting/
 │  ├─ Grasshopper/            the parametric model the DXFs come from
 │  ├─ Model-associated/       one part in every woodWOP-related format
 │  └─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
-└─ Tools/                     the converter and its checker
+└─ Tools/                     the converters, the checker, the GH component
 ```
 
 ## Docs — format references
@@ -103,6 +103,7 @@ the Ø8 blind holes are dowels).
 | --- | --- |
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, contour references. |
+| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, one MPR program as text per branch out. Recognises panel, orientation and drillings from the geometry alone. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
 
@@ -128,14 +129,22 @@ message.
 
 ```
 Grasshopper (.gh)
-      │  Pancake export
-      ▼
-   DXF with ACIS solids ──✗── woodWOP DXF-Import   (cannot read solids)
       │
-      │  Tools/dxf2mpr.py
-      ▼
-   MPR ──► Tools/check_mpr.py ──► woodWOP ──► machine
+      ├─ Tools/gh_brep2mpr.py ─────────────────────────► MPR text
+      │     (Brep straight to MPR, no export at all)        │
+      │                                                     │
+      │  Pancake export                                     │
+      ▼                                                     │
+   DXF with ACIS solids ──✗── woodWOP DXF-Import            │
+      │                       (cannot read solids)          │
+      │  Tools/dxf2mpr.py                                   │
+      ▼                                                     ▼
+   MPR ─────────────────► Tools/check_mpr.py ──► woodWOP ──► machine
 ```
+
+The Grasshopper route skips the export entirely: Rhino already holds the
+Brep, so there is no DXF to write and no ACIS stream to decode. The DXF route
+stays for parts that arrive from outside.
 
 The alternative path stays open: export 2D geometry on the §3.3 layer names
 and either DXF-Import or `dxf2mpr.py --force-2d` will read it. The layer

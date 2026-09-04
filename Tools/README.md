@@ -111,6 +111,32 @@ Switch them off with `--no-orient`, `--no-long-x`, `--no-flip`,
 -n, --dry-run         analyse only, write nothing
 ```
 
+## Grasshopper component
+
+`gh_brep2mpr.py` is the same MPR writer driven from Rhino instead of from a
+DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
+
+| | Name | Type | Access |
+| --- | --- | --- | --- |
+| input | `B` | Brep | **Tree** — one part per branch |
+| output | `MPR` | — | one MPR program as text per branch |
+| output | `INFO` | — | one report line per part |
+
+It takes raw solids with no attached data and recognises the rest: the largest
+planar face defines the panel plane, its longest straight edge defines X, the
+part is turned over if all the vertical drilling would otherwise come from
+underneath, and cylindrical faces become drillings classified by which face
+they break out through. Behaviour is tuned by the `SETTINGS` block at the top
+of the file (`SNAP`, `MAX_DIA`, `BM_VERT`, `THICKNESS`, `ORIENT`, `CONTOUR`).
+
+It outputs **text, not files**. When you write it out, use CRLF —
+`open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason in the
+previous section. Put a boolean `Run` gate in front of any file writing, or a
+solve on every slider drag will write the whole batch.
+
+The component assumes the Rhino document is in millimetres and puts a warning
+in `INFO` if it is not.
+
 ## Limits — read this before the first cut
 
 * **The output has not been run on a machine.** It matches the MPR 4.x
