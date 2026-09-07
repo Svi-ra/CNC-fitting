@@ -68,6 +68,11 @@ Layer numbers use `_` as the decimal point, as woodWOP does
 | bore at any other angle | `<104 \BohrUniv\` (needs a swivel unit) |
 | outline that is not the bounding rectangle | contour `]n` + `<105 \Konturfraesen\` |
 
+This is the DXF converter's mapping. The Grasshopper component below
+never writes `<131 UfluBohr>`: its machine drills from one side only,
+so a bore opening at the underside is handled by turning the piece
+over instead.
+
 Coordinate system (woodWOP coordinate system 0): origin at the lower left
 corner of the underside, X = length, Y = width, Z = 0 at the bottom face.
 Vertical drillings enter from the top, `TI` is the depth. `ZA` of a horizontal
@@ -116,25 +121,102 @@ Switch them off with `--no-orient`, `--no-long-x`, `--no-flip`,
 `gh_brep2mpr.py` is the same MPR writer driven from Rhino instead of from a
 DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 
-| | Name | Type | Access |
-| --- | --- | --- | --- |
-| input | `B` | Brep | **Tree** — one part per branch |
-| output | `MPR` | — | one whole program per branch, CRLF already embedded |
-| output | `LINES` | — | the same program, one line per item, no line endings |
-| output | `INFO` | — | one report line per part |
+| | Name | Type | Access | |
+| --- | --- | --- | --- | --- |
+| input | `B` | Brep | **Tree** | one part per branch |
+| input | `ID` | str | **Tree** | piece ID — optional |
+| input | `QTY` | int | **Tree** | how many of this piece — optional |
+| output | `MPR` | — | | one whole program per setup, line endings embedded |
+| output | `NAME` | — | | the file name for each program |
+| output | `INFO` | — | | one report per part |
 
-### Which output to use
+`MPR` and `NAME` are parallel trees: item *i* of a branch is the program, item
+*i* of the same branch in `NAME` is what to call it. The component runs with
+only `B` wired; `ID` and `QTY` may be left off.
 
-**`MPR`** when the export path writes the text verbatim.
+`ID` and `QTY` can each be wired either branch-for-branch with `B`, or as one
+flat list in part order. With no `ID` the branch path is used, so a flat list
+of parts gives `0`, `1`, `2` …
 
-**`LINES`** when the exporter joins a list of lines and applies its own line
-ending — ShapeDiver, for instance. Handing ShapeDiver the single `MPR` string
-is what makes its CRLF setting look like it is being ignored: the newlines are
-already inside the string, so there is nothing for it to join. `LINES` carries
-no line endings at all, so the setting works as intended.
+### What the machine can reach
 
-Never use both at once. If an exporter converts line endings *and* you feed it
-`MPR`, the file ends up with CR CR LF — set `EOL` to `\n` in that case, or switch to `LINES`.
+The drilling head cannot do every hole in one clamping, so **one part may come
+out as more than one program**. What it is fitted with lives in one dict near
+the top of the file:
+
+```python
+MACHINE = {
+    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 5.0),   # dead-end, from above
+    "vert_thru":  (7.0, 5.0),                           # right through
+    "YM": (8.0,),        # top edge,   Y = BR, drills towards -Y
+    "YP": (4.5,),        # lower edge, Y = 0,  drills towards +Y
+    "XM": (8.0, 4.5),    # right edge, X = LA, drills towards -X
+    "XP": (8.0, 4.5),    # left edge,  X = 0,  drills towards +X
+}
+```
+
+Two constraints follow from it:
+
+* the vertical array is a bank of fixed spindles working from **one side
+  only**, so a bore that opens at the underside is reachable only with the
+  piece turned over. A bore that breaks out the far side is checked against
+  `vert_thru`, everything else against `vert_blind`;
+* the horizontal spindles carry a **different bit on each side** — the top
+  edge drills Ø8 only, the lower edge Ø4.5 only, left and right do both.
+
+The one re-clamping the planner will use is a **flip about the X axis**: the
+piece is turned face for back, which swaps the top and lower edges and brings
+the underside up. Left and right carry the same bits, so no other rotation
+buys anything.
+
+Every bore is tried face up (`F`) and turned over (`B`):
+
+* one that works only one way **forces** that setup;
+* one that works either way — a through bore, anything in the left or right
+  edge — rides along with the first setup already needed, so a part that fits
+  in one clamping stays **one** file;
+* one that works neither way is named in `INFO` and left out of the program.
+  Set `STRICT = False` to have it written anyway; it is still reported.
+
+So a piece with Ø8 *and* Ø4.5 holes in its top edge comes out as two programs:
+
+```
+ND0142_800x400-F_4.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
+ND0142_800x400-B_4.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
+```
+
+The first drills the Ø8 with the piece face up. The second is written for the
+flipped piece, where those Ø4.5 holes now sit in the lower edge. Turn the
+finished part back over and every hole is where the model put it.
+
+**"Top edge" means Y = `BR`** and lower means Y = 0, as woodWOP draws the part
+in plan. If the shop means it the other way round, swap those two lines in
+`MACHINE`.
+
+When a part needs two setups *and* has a contour, the outline is cut in the
+first program only — repeating it would cut air — and `INFO` says so, because
+a piece cut free in the first setup may no longer be held for the second.
+
+### File names
+
+```
+<ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-F_4.mpr
+```
+
+`F` = face up, as modelled. `B` = turned over. The quantity is whatever came
+in on `QTY` (1 if nothing did) and is the same on every program of one piece.
+Two pieces asking for the same name is caught and reported rather than
+silently overwriting — give them distinct IDs. Change `EXT` for a different
+extension, or `""` for a bare name.
+
+### Line endings
+
+`MPR` carries the line ending inside the string, CRLF by default, set by
+`EOL`. woodWOP splits a program on CRLF; an LF-only file is read as one
+unparseable line and opens silently as an empty default panel.
+
+If the export path applies CRLF *itself* while joining, feeding it a string
+that already contains CRLF gives CR CR LF — set `EOL` to `\n` in that case.
 
 ### The single-space lines are load bearing
 
@@ -142,6 +224,8 @@ The MPR format separates blocks with a line containing one space, and every
 program in `Examples/PAL_8681_SM_Alb_Diamant/` has them. They look like stray
 whitespace when you copy the text out of a panel, but they are required.
 **Do not let the export path trim trailing whitespace.**
+
+### Placement and settings
 
 **Parts are expected to arrive lying flat in the world XY plane**, thickness
 along Z. Nothing is ever rotated out of that plane. A part fed in standing on
@@ -153,22 +237,22 @@ the world bounding box gives the panel size, cylindrical faces become
 drillings classified by which face they break out through, and the top face
 outline becomes a contour when it is not simply the bounding rectangle.
 
-Two in-plane adjustments are on by default and are pure rotations about Z or
-about X by 180 degrees, so the part stays flat either way:
-
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `LONG_X` | on | turn the part 90 degrees so its long side runs along X, as `LA`/`_BSX` expects |
-| `FLIP` | on | turn the part over when every vertical bore would otherwise be drilled from underneath |
+| `LONG_X` | on | turn the part 90 degrees so its long side runs along X, as `LA`/`_BSX` expects. The top and lower edges follow the turn |
+| `STRICT` | on | leave bores the head cannot reach out of the program; off writes them anyway |
+| `DIA_TOL` | 0.2 | how far a measured diameter may sit from a listed one and still count as that bit |
+| `EXT` | `.mpr` | appended to every `NAME` |
 
-Set either to `False` in the `SETTINGS` block if the definition already places
-parts exactly as they should be machined. The rest of that block is `SNAP`,
-`MAX_DIA`, `BM_VERT`, `THICKNESS` and `CONTOUR`.
+Which face ends up on top is **not** a setting: it is decided per part by the
+planner above, because it is a machining choice rather than a property of the
+model. The rest of the block is `SNAP`, `MAX_DIA`, `BM_VERT`, `THICKNESS`,
+`CONTOUR` and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
-`open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason in the
-previous section. Put a boolean `Run` gate in front of any file writing, or a
-solve on every slider drag will write the whole batch.
+`open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason above.
+Put a boolean `Run` gate in front of any file writing, or a solve on every
+slider drag will write the whole batch.
 
 The component assumes the Rhino document is in millimetres and puts a warning
 in `INFO` if it is not.
@@ -180,6 +264,10 @@ in `INFO` if it is not.
   of the shop's existing programs, and `check_mpr.py` passes on all 82 of them
   as well as on everything this tool generates — but the first converted
   program should still be opened in woodWOP and dry-run before it cuts.
+* **The two-setup split covers drilling only.** Contour milling,
+  pockets and grooves are not checked against the machine, and the
+  `B` program assumes the operator turns the piece over about its
+  long axis and re-references it to the same zero corner.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.
 * Pockets and grooves modelled as solid cavities are **not** converted

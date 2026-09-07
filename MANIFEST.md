@@ -103,7 +103,7 @@ the Ø8 blind holes are dowels).
 | --- | --- |
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, contour references. |
-| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, one MPR program as text per branch out. Expects parts already flat in XY; recognises size and drillings from the geometry alone. |
+| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size and drillings from the geometry alone, checks every bore against what the drilling head carries, and splits a part over two setups — face up and turned over — when one clamping cannot reach everything. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
 

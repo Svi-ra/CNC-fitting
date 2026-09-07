@@ -9,6 +9,79 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.3.0] — 2026-09-07
+
+`Tools/gh_brep2mpr.py` now writes programs the machine can actually run: what
+the drilling head is fitted with is modelled explicitly, and a part whose holes
+do not all fit in one clamping comes out as more than one program.
+
+### Added
+
+- **A machine model.** One `MACHINE` dict holds what the head carries: the
+  vertical array's dead-end bits (35, 20, 15, 10, 8, 5 mm) and through bits
+  (7, 5 mm), and the horizontal bits per side — Ø8 in the top edge (Y = `BR`),
+  Ø4.5 in the lower edge (Y = 0), both in the left and right edges. A measured
+  diameter counts as a listed one within `DIA_TOL` (0.2 mm).
+- **Setup planning.** Every bore is tried face up (`F`) and turned over (`B`),
+  a 180° flip about the X axis that swaps the top and lower edges and brings
+  the underside up. A bore that works only one way forces that setup; one that
+  works either way — a through bore, anything in the left or right edge —
+  rides along with the first setup already needed, so a part that fits in one
+  clamping stays one file. Left and right carry the same bits, so no other
+  rotation buys anything and none is used.
+  - A piece with Ø8 *and* Ø4.5 holes in its top edge now yields two programs:
+    the Ø8 face up, the Ø4.5 written for the flipped piece where they sit in
+    the lower edge. Turned back, every hole is where the model put it.
+  - A bore reachable in neither setup is named in `INFO` and left out.
+    `STRICT = False` writes it anyway, still reported.
+  - The contour is cut in the first program only; when a part needs two
+    setups and has one, `INFO` warns that a piece cut free in the first setup
+    may no longer be held for the second.
+- **`NAME` output** — `<ID>_<length>x<width>-<F|B>_<quantity>.mpr`, a tree
+  parallel to `MPR`: item *i* of a branch names item *i* of the program tree.
+  Duplicate names are caught and reported rather than silently overwriting.
+  `EXT` sets the extension.
+- **`ID` and `QTY` inputs**, both optional and both wireable either
+  branch-for-branch with `B` or as one flat list in part order. With no `ID`
+  the branch path is used. The component still runs with only `B` wired.
+- Contour outlines are now forced counter-clockwise, so `RI="1"` keeps its
+  meaning after a flip mirrors the outline.
+
+### Removed
+
+- **The `LINES` output.** `MPR` is again the only program output, one string
+  per program with the line ending inside it (`EOL`, CRLF by default) — as
+  asked. Set `EOL` to `\n` if the export path applies CRLF itself.
+- **The `FLIP` setting** and the `<131 UfluBohr>` branch. Drilling from below
+  is exactly what the setup planner now handles, and it is a machining
+  decision per part rather than a global switch.
+
+### Changed
+
+- `emit_hole` is split into `feature` (what the bore is, in a given setup
+  frame), `reachable` (can the head do it, and as which bit) and `macro`
+  (what to write). The planner calls the first two per setup, so the same
+  classification decides the split and the output.
+- `place` no longer decides which face ends up on top; it does `LONG_X` and
+  the shift onto the zero point only.
+- `INFO` now reports per part rather than per program: size, quantity, how
+  many files, what each setup drills, and the notes.
+
+### Verification
+
+- Five synthetic parts through the planner, with Rhino stubbed out: a mixed
+  part needing both setups, one drilled entirely on its underside (single `B`
+  file), one reachable face up in one go, one where nothing is reachable, and
+  a plain blank. Coordinates in the `B` files check out by hand — the Ø15
+  bottom bore at X=600 Y=100 z 0…4 lands at Y=300, `TI=4`, and the Ø4.5 top
+  edge bore at Y=400 lands at `YA=0`, `BM="YP"`, `ZA` mirrored.
+- Both programs of the mixed part written out and passed by `check_mpr.py`:
+  64 and 42 CRLF, zero bare LF, `!` last.
+- Contour winding: an L-shaped outline and its mirror both come out
+  counter-clockwise; a plain rectangle still yields no contour.
+- `ID`/`QTY` lookup by branch, by flat index, past the end of a branch, and
+  with nothing wired.
+
 ## [0.2.2] — 2026-09-04
 
 ### Fixed

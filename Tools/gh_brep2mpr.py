@@ -7,41 +7,67 @@ It is self-contained; nothing else needs to be on the module path.
 
 Component setup
 ---------------
-    input   B      Brep      access = Tree   one part per branch
-    output  MPR    -                         one whole program per branch,
-                                             CRLF already embedded
-    output  LINES  -                         the same program, one line per
-                                             item, no line endings attached
-    output  INFO   -                         one report line per part
+    input   B      Brep     access = Tree   one part per branch
+    input   ID     str      access = Tree   piece ID, optional
+    input   QTY    int      access = Tree   how many of this piece, optional
+    output  MPR    -                        one whole program per setup,
+                                            line endings already embedded
+    output  NAME   -                        the file name for each program
+    output  INFO   -                        one report per part
 
-Use **MPR** with an exporter that writes the text verbatim, and **LINES** with
-one that joins a list of lines and applies its own line ending (ShapeDiver).
-Feeding ShapeDiver the single MPR string is what makes its CRLF setting look
-like it is being ignored: the newlines are already inside the string, so there
-is nothing for it to join.
+MPR and NAME are parallel trees: item *i* of a branch is the program, item *i*
+of the same branch in NAME is what to call it. Write MPR out verbatim -- the
+line endings are inside the string (CRLF by default). woodWOP splits a program
+on CRLF; an LF-only file is read as one unparseable line and opens silently as
+an empty default panel.
 
 Takes raw solids with no attached data: the panel size and every drilling are
 recognised from the geometry itself.
 
-**Parts are assumed to arrive lying flat in the world XY plane** — thickness
+**Parts are assumed to arrive lying flat in the world XY plane** -- thickness
 along Z. Nothing is rotated out of that plane; a part that is not flat is
 reported in INFO rather than corrected.
 
     - the world bounding box gives the panel size
     - the long side of the part is turned to X (LONG_X)
-    - the part is turned over if all the vertical drilling would otherwise
-      come from underneath (FLIP)
     - cylindrical faces become drillings, classified by where they break out:
         along Z, open at the top      -> <102 \BohrVert\
-        along Z, open at the bottom   -> <131 \UfluBohr\
         along X or Y, open at an edge -> <103 \BohrHoriz\
         any other angle               -> <104 \BohrUniv\
     - an outline that is not the bounding rectangle becomes a contour ]1
       plus <105 \Konturfraesen\
 
-Output is text, not files. Write it out with a File component, or feed it to a
-Stream Contents component -- but write with CRLF: woodWOP reads an LF-only
-program as one unparseable line and silently opens an empty default panel.
+What the machine can actually reach
+-----------------------------------
+The drilling head cannot do every hole in one clamping, so one part may come
+out as more than one program (see MACHINE below):
+
+    - the vertical drill array works from **one side only**, so a hole that
+      opens at the underside is reachable only with the piece turned over;
+    - the horizontal spindles carry a different bit on each side: the **top
+      edge** (Y = BR) drills 8 mm only, the **lower edge** (Y = 0) 4.5 mm
+      only, the **left and right edges** (X = 0, X = LA) do both.
+
+The one allowed re-clamping is a **flip about the X axis**: the piece is
+turned face for back, which swaps the top and lower edges and brings the
+underside up. Left and right carry the same bits, so no other rotation buys
+anything.
+
+So a piece with 8 mm *and* 4.5 mm holes in its top edge comes out as two
+programs: the first drills the 8 mm with the piece face up, the second is
+written for the flipped piece, where those 4.5 mm holes now sit in the lower
+edge. Turn the finished part back and every hole is where the model put it.
+
+Anything the machine still cannot reach is reported in INFO and left out of
+the program (set STRICT = False to have it written out anyway).
+
+File names
+----------
+    <ID>_<length>x<width>-<F|B>_<quantity>.mpr
+
+`F` = face up, as modelled. `B` = turned over. The quantity is whatever came
+in on QTY (1 if nothing did), and is the same on every program of one piece.
+With no ID input the branch path is used, so a flat list gives 0, 1, 2 ...
 """
 
 import math
@@ -59,22 +85,41 @@ MAX_DIA = 60.0      # larger round openings are not treated as drillings
 BM_VERT = "LS"      # drill mode for vertical bores: LS SS LSL SSS
 THICKNESS = None    # force a thickness in mm, or None to measure it
 LONG_X = True       # turn the part so its long side runs along X
-FLIP = True         # turn the part over if it would be drilled from below
 CONTOUR = True      # emit a contour when the outline is not a rectangle
 SAMPLES = 96        # points sampled per face loop
+EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 
-# Line endings. woodWOP splits a program on CRLF: an LF-only file is read as
-# one unparseable line and opens silently as an empty default panel.
+# ---------------------------------------------------------------------------
+# the machine
+# ---------------------------------------------------------------------------
 #
-#   MPR output   one string per branch, with EOL already embedded in it.
-#                Use this with an exporter that writes the text verbatim.
-#   LINES output the same program as one line per item, carrying no line
-#                endings at all. Use this with an exporter that joins a list
-#                of lines itself (ShapeDiver) -- its CRLF setting then has
-#                something to act on, and cannot conflict with ours.
+# What the drilling head is actually fitted with. A bore whose diameter is not
+# on the matching list cannot be drilled in that position; the planner below
+# tries the flipped setup, and reports the bore if that fails too.
 #
-# Set EOL to "\n" if the export path adds its own CRLF, otherwise the file
-# ends up with CR CR LF.
+# The vertical array is a bank of fixed spindles working from above only, so
+# these two lists are the bits in it -- not depths. A bore that breaks out the
+# far side comes off the through list, the rest off the dead-end list.
+
+MACHINE = {
+    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 5.0),   # dead-end, from above
+    "vert_thru": (7.0, 5.0),                            # right through
+    "YM": (8.0,),                # top edge,   Y = BR, drills towards -Y
+    "YP": (4.5,),                # lower edge, Y = 0,  drills towards +Y
+    "XM": (8.0, 4.5),            # right edge, X = LA, drills towards -X
+    "XP": (8.0, 4.5),            # left edge,  X = 0,  drills towards +X
+}
+
+EDGE_NAME = {"YM": "top edge", "YP": "lower edge",
+             "XM": "right edge", "XP": "left edge"}
+
+DIA_TOL = 0.2       # a measured diameter counts as a listed one within this
+STRICT = True       # True: leave unreachable bores out and report them
+                    # False: write them anyway, still reported
+
+# Line endings. The MPR output carries EOL inside the string already. Set it
+# to "\n" only if the export path applies CRLF itself, otherwise the file ends
+# up with CR CR LF.
 EOL = "\r\n"
 
 FACE_TOL = 0.02     # "breaks out through this face", mm
@@ -135,14 +180,9 @@ def canonical_axis(a):
     return a
 
 
-# in-plane rotations: both keep the part flat in XY (proper rotations)
-
 def rot_z90(p):
+    """In-plane quarter turn -- keeps the part flat in XY."""
     return (p[1], -p[0], p[2])
-
-
-def rot_x180(p):
-    return (p[0], -p[1], -p[2])
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +243,7 @@ class Part(object):
     def __init__(self):
         self.lx = self.ly = self.lz = 0.0
         self.macros = []            # (id, name, [(key, value), ...])
-        self.contour = None         # [(kind, {param: value}), ...]
+        self.contour = None         # [(kind, [(param, value), ...]), ...]
         self.notes = []
 
 
@@ -299,6 +339,10 @@ class Hole(object):
     def axis(self):
         return canonical_axis(vsub(self.p1, self.p0))
 
+    def moved(self, fn):
+        """A copy in another frame; the original is left alone."""
+        return Hole(fn(self.p0), fn(self.p1), self.dia)
+
     def transform(self, fn):
         self.p0 = fn(self.p0)
         self.p1 = fn(self.p1)
@@ -313,6 +357,16 @@ class Seg(object):
         self.centre = centre
         self.radius = radius
         self.mid = mid
+
+    def moved(self, fn):
+        return Seg(fn(self.p0), fn(self.p1),
+                   None if self.centre is None else fn(self.centre),
+                   self.radius,
+                   None if self.mid is None else fn(self.mid))
+
+    def reversed_(self):
+        """The same segment walked the other way round."""
+        return Seg(self.p1, self.p0, self.centre, self.radius, self.mid)
 
     def transform(self, fn):
         self.p0 = fn(self.p0)
@@ -429,7 +483,7 @@ def _merge(cylinders):
 
 
 # ---------------------------------------------------------------------------
-# orientation
+# placement
 # ---------------------------------------------------------------------------
 
 def _bbox(corners, holes):
@@ -455,30 +509,18 @@ def _apply(fn, corners, holes, planars):
 
 
 def place(corners, holes, planars, notes):
-    """Long side along X, drilling from above, part on the zero point.
+    """Long side along X, part sitting on the zero point, face up as modelled.
 
-    Both rotations are about Z or about X by 180 degrees, so the part stays
-    flat in XY either way.
+    Which face ends up on top -- and so which edge is the top edge -- is left
+    to the setup planner below. That is a machining decision, not a property
+    of the model.
     """
     if LONG_X:
         x0, y0, _z0, x1, y1, _z1 = _bbox(corners, holes)
         if (x1 - x0) < (y1 - y0) - GEO_TOL:
             corners = _apply(rot_z90, corners, holes, planars)
-            notes.append("turned 90 deg so the long side runs along X")
-
-    if FLIP:
-        _x0, _y0, z0, _x1, _y1, z1 = _bbox(corners, holes)
-        top = bot = 0
-        for h in holes:
-            if abs(abs(h.axis()[2]) - 1.0) > 1e-3:
-                continue
-            if abs(max(h.p0[2], h.p1[2]) - z1) <= FACE_TOL:
-                top += 1
-            elif abs(min(h.p0[2], h.p1[2]) - z0) <= FACE_TOL:
-                bot += 1
-        if bot and not top:
-            corners = _apply(rot_x180, corners, holes, planars)
-            notes.append("turned over so the drilling is done from above")
+            notes.append("turned 90 deg so the long side runs along X - the "
+                         "top and lower edges follow the turn")
 
     x0, y0, z0, _x1, _y1, _z1 = _bbox(corners, holes)
     if abs(x0) > GEO_TOL or abs(y0) > GEO_TOL or abs(z0) > GEO_TOL:
@@ -488,81 +530,164 @@ def place(corners, holes, planars, notes):
 
 
 # ---------------------------------------------------------------------------
+# setups: F = face up as modelled, B = turned over about the X axis
+# ---------------------------------------------------------------------------
+
+SETUPS = ("F", "B")
+
+
+def setup_maps(mark, lx, ly, lz):
+    """(point map, direction map) taking base coordinates into a setup.
+
+    B is a 180 deg turn about the X axis followed by the shift that puts the
+    part back on the zero point. The placed part spans 0..lx, 0..ly, 0..lz,
+    so that shift is exactly (0, ly, lz). X is untouched, so a bore in the
+    left edge stays in the left edge; the top and lower edges swap, and the
+    two faces swap.
+    """
+    if mark == "B":
+        return (lambda p: (p[0], ly - p[1], lz - p[2]),
+                lambda v: (v[0], -v[1], -v[2]))
+    ident = lambda v: v
+    return (ident, ident)
+
+
+# ---------------------------------------------------------------------------
 # features -> macros
 # ---------------------------------------------------------------------------
 
-def emit_hole(part, hole):
-    dia = hole.dia
-    if SNAP > 0:
-        dia = round(dia / SNAP) * SNAP
-    if dia > MAX_DIA:
-        part.notes.append("round opening d=%s left as geometry, not drilled "
-                          "(over MAX_DIA)" % fnum(dia))
-        return
+def nominal(dia, allowed):
+    """The listed diameter this bore is, or None if the head has no such bit."""
+    best = None
+    for d in allowed:
+        if abs(d - dia) <= DIA_TOL and (best is None
+                                        or abs(d - dia) < abs(best - dia)):
+            best = d
+    return best
 
+
+def feature(hole, lx, ly, lz):
+    """What this bore is, in the setup frame it is handed in.
+
+    Returns a dict keyed on 't': 'vert', 'horiz', 'univ' or 'none'.
+    """
     p0, p1 = hole.p0, hole.p1
     ax, ay, az = hole.axis()
 
-    # ---- vertical --------------------------------------------------------
     if abs(abs(az) - 1.0) < 1e-3:
         zlo, zhi = min(p0[2], p1[2]), max(p0[2], p1[2])
-        x, y = p0[0], p0[1]
-        open_top = abs(zhi - part.lz) <= FACE_TOL
-        open_bot = abs(zlo) <= FACE_TOL
-        if open_top:
-            depth = part.lz if open_bot else part.lz - zlo
-            part.macros.append((102, "BohrVert", [
-                ("XA", fnum(x)), ("YA", fnum(y)),
-                ("TI", fnum(depth)), ("DU", fnum(dia)),
-                ("BM", BM_VERT), ("S_", "2"),
-                ("AN", "1"), ("AB", "0"), ("WI", "0")]))
-        elif open_bot:
-            part.macros.append((131, "UfluBohr", [
-                ("XA", fnum(x)), ("YA", fnum(y)),
-                ("DU", fnum(dia)), ("WI", "0"),
-                ("TI", fnum(zhi)), ("AB", "0"), ("F_", "STANDARD")]))
-        else:
-            part.notes.append("closed internal bore d=%s at X=%s Y=%s skipped"
-                              % (fnum(dia), fnum(x), fnum(y)))
-        return
+        top = abs(zhi - lz) <= FACE_TOL
+        bot = abs(zlo) <= FACE_TOL
+        if not top and not bot:
+            return {"t": "none",
+                    "why": "closed internal bore at X=%s Y=%s - it reaches "
+                           "neither face" % (fnum(p0[0]), fnum(p0[1]))}
+        return {"t": "vert", "x": p0[0], "y": p0[1],
+                "zlo": zlo, "zhi": zhi, "top": top, "bot": bot,
+                "thru": top and bot}
 
-    # ---- horizontal ------------------------------------------------------
     along_x = abs(abs(ax) - 1.0) < 1e-3
     along_y = abs(abs(ay) - 1.0) < 1e-3
     if abs(az) < 1e-3 and (along_x or along_y):
         i = 0 if along_x else 1
         lo, hi = (p0, p1) if p0[i] <= p1[i] else (p1, p0)
-        limit = part.lx if along_x else part.ly
+        limit = lx if along_x else ly
         if abs(lo[i]) <= FACE_TOL:
             bm, entry = ("XP" if along_x else "YP"), lo
         elif abs(hi[i] - limit) <= FACE_TOL:
             bm, entry = ("XM" if along_x else "YM"), hi
         else:
-            part.notes.append("internal horizontal bore d=%s skipped "
-                              "(reaches no edge)" % fnum(dia))
-            return
-        part.macros.append((103, "BohrHoriz", [
-            ("XA", fnum(entry[0])), ("YA", fnum(entry[1])),
-            ("ZA", fnum(entry[2])), ("DU", fnum(dia)),
-            ("TI", fnum(hi[i] - lo[i])), ("BM", bm),
-            ("AN", "1"), ("AB", "0"), ("F_", "STANDARD")]))
-        return
+            return {"t": "none",
+                    "why": "internal horizontal bore at X=%s Y=%s - it "
+                           "reaches no edge" % (fnum(p0[0]), fnum(p0[1]))}
+        return {"t": "horiz", "bm": bm, "entry": entry, "len": hi[i] - lo[i]}
 
-    # ---- any other angle -------------------------------------------------
     d = vnorm(vsub(p0, p1))
     entry = p1
     if d[2] > 0:
         d = vmul(d, -1.0)
         entry = p0
-    wi = math.degrees(math.acos(max(-1.0, min(1.0, -d[2]))))
-    ca = math.degrees(math.atan2(d[1], d[0])) % 360.0
-    part.macros.append((104, "BohrUniv", [
-        ("XA", fnum(entry[0])), ("YA", fnum(entry[1])),
-        ("ZA", fnum(entry[2])), ("CA", fnum(ca)), ("WI", fnum(wi)),
-        ("DU", fnum(dia)), ("TI", fnum(vlen(vsub(p1, p0)))),
-        ("AN", "1"), ("AB", "0"), ("F_", "STANDARD")]))
-    part.notes.append("slanted bore as <104 BohrUniv> (CA=%s WI=%s) - needs a "
-                      "swivel drilling unit" % (fnum(ca), fnum(wi)))
+    return {"t": "univ", "entry": entry,
+            "wi": math.degrees(math.acos(max(-1.0, min(1.0, -d[2])))),
+            "ca": math.degrees(math.atan2(d[1], d[0])) % 360.0,
+            "len": vlen(vsub(p1, p0))}
+
+
+def diameters(key):
+    return ", ".join(fnum(d) for d in MACHINE[key])
+
+
+def reachable(feat, dia):
+    """Can the head do this bore in this setup? -> (ok, nominal dia, why not)."""
+    if feat["t"] == "none":
+        return False, dia, feat["why"]
+
+    if feat["t"] == "vert":
+        if not feat["top"]:
+            return False, dia, (
+                "%s mm vertical bore opens at the underside - the array only "
+                "drills from above" % fnum(dia))
+        key = "vert_thru" if feat["thru"] else "vert_blind"
+        nom = nominal(dia, MACHINE[key])
+        if nom is None:
+            return False, dia, (
+                "%s mm %s vertical bore - the array carries %s"
+                % (fnum(dia), "through" if feat["thru"] else "dead-end",
+                   diameters(key)))
+        return True, nom, None
+
+    if feat["t"] == "horiz":
+        bm = feat["bm"]
+        nom = nominal(dia, MACHINE[bm])
+        if nom is None:
+            return False, dia, (
+                "%s mm bore in the %s - that side drills %s"
+                % (fnum(dia), EDGE_NAME[bm], diameters(bm)))
+        return True, nom, None
+
+    return False, dia, ("bore %s deg off vertical - the head does not swivel"
+                        % fnum(feat["wi"]))
+
+
+def macro(feat, dia, lz):
+    """The MPR macro for a bore, or None if there is nothing to write."""
+    if feat["t"] == "vert":
+        depth = lz if feat["thru"] else lz - feat["zlo"]
+        return (102, "BohrVert", [
+            ("XA", fnum(feat["x"])), ("YA", fnum(feat["y"])),
+            ("TI", fnum(depth)), ("DU", fnum(dia)),
+            ("BM", BM_VERT), ("S_", "2"),
+            ("AN", "1"), ("AB", "0"), ("WI", "0")])
+
+    if feat["t"] == "horiz":
+        e = feat["entry"]
+        return (103, "BohrHoriz", [
+            ("XA", fnum(e[0])), ("YA", fnum(e[1])), ("ZA", fnum(e[2])),
+            ("DU", fnum(dia)), ("TI", fnum(feat["len"])),
+            ("BM", feat["bm"]),
+            ("AN", "1"), ("AB", "0"), ("F_", "STANDARD")])
+
+    if feat["t"] == "univ":
+        e = feat["entry"]
+        return (104, "BohrUniv", [
+            ("XA", fnum(e[0])), ("YA", fnum(e[1])), ("ZA", fnum(e[2])),
+            ("CA", fnum(feat["ca"])), ("WI", fnum(feat["wi"])),
+            ("DU", fnum(dia)), ("TI", fnum(feat["len"])),
+            ("AN", "1"), ("AB", "0"), ("F_", "STANDARD")])
+
+    return None
+
+
+def loop_area(segs):
+    """Twice the signed area of the polygon through the segment ends.
+
+    Only the sign is wanted -- counter-clockwise from clockwise -- so the
+    chord across each arc is close enough.
+    """
+    total = 0.0
+    for s in segs:
+        total += s.p0[0] * s.p1[1] - s.p1[0] * s.p0[1]
+    return total
 
 
 def outline(planars, part):
@@ -577,6 +702,11 @@ def outline(planars, part):
             best_z, best = z, segs
     if not best or abs(best_z - part.lz) > 0.5:
         return None
+
+    if loop_area(best) < 0:
+        # Turning the part over mirrors the outline. Walk it the other way so
+        # the contour stays counter-clockwise and RI="1" keeps its meaning.
+        best = [s.reversed_() for s in reversed(best)]
 
     elems = [("KP", [("X", cnum(best[0].p0[0])), ("Y", cnum(best[0].p0[1])),
                      ("Z", "0"), ("KO", "0")])]
@@ -602,61 +732,175 @@ def outline(planars, part):
     return elems
 
 
-def check_flat(part):
+def check_flat(lx, ly, lz, notes):
     """The script assumes the part already lies flat: thickness along Z.
 
     Nothing is rotated out of plane to fix it -- that would contradict the
     layout the definition produced -- but a part fed in on edge would quietly
     yield a program with the wrong size and the wrong drilling, so say so.
     """
-    dims = (part.lx, part.ly, part.lz)
+    dims = (lx, ly, lz)
     thin = min(range(3), key=lambda i: dims[i])
     if thin != 2 and dims[thin] < 0.6 * sorted(dims)[1]:
-        part.notes.append(
+        notes.append(
             "WARNING: this part is not lying flat in XY - its thinnest "
             "direction is %s (%s mm), so DI reads %s mm. Size and drilling "
             "below are almost certainly wrong."
-            % ("XYZ"[thin], fnum(dims[thin]), fnum(part.lz)))
+            % ("XYZ"[thin], fnum(dims[thin]), fnum(lz)))
 
 
-def brep_to_part(brep):
-    part = Part()
+# ---------------------------------------------------------------------------
+# planning the setups
+# ---------------------------------------------------------------------------
+
+def plan(holes, lx, ly, lz, notes):
+    """Split the drilling over as few setups as the machine allows.
+
+    Every bore is tried face up and turned over. One that works only one way
+    forces that setup; one that works either way rides along with the first
+    setup already needed, so a part that fits in one clamping stays one file.
+    Whatever works neither way is reported and, under STRICT, left out.
+
+    Returns [(mark, [(feature, nominal diameter), ...]), ...], first setup
+    first.
+    """
+    tried = []
+    for hole in holes:
+        dia = hole.dia
+        if SNAP > 0:
+            dia = round(dia / SNAP) * SNAP
+        if dia > MAX_DIA:
+            notes.append("round opening %s mm left as geometry, not drilled "
+                         "(over MAX_DIA)" % fnum(dia))
+            continue
+
+        opts = {}
+        why = {}
+        for mark in SETUPS:
+            pt, _vec = setup_maps(mark, lx, ly, lz)
+            feat = feature(hole.moved(pt), lx, ly, lz)
+            ok, nom, reason = reachable(feat, dia)
+            if ok:
+                opts[mark] = (feat, nom)
+                if abs(nom - dia) > 0.001:
+                    notes.append("%s mm bore taken as the %s mm bit"
+                                 % (fnum(dia), fnum(nom)))
+            else:
+                why[mark] = reason
+        tried.append((hole, dia, opts, why))
+
+    needed = [mark for mark in SETUPS
+              if any(len(o) == 1 and mark in o for _h, _d, o, _w in tried)]
+    if not needed:
+        needed = ["F"]
+
+    work = dict((mark, []) for mark in needed)
+    for hole, dia, opts, why in tried:
+        here = [m for m in needed if m in opts]
+        if here:
+            feat, nom = opts[here[0]]
+            work[here[0]].append((feat, nom))
+            continue
+        # Reachable in neither setup. Say so; under STRICT the bore is simply
+        # not in the program, otherwise it is written face up so that at
+        # least it shows in woodWOP and someone has to look at it.
+        face_up, over = why.get("F"), why.get("B")
+        reason = face_up or over or "not reachable"
+        if face_up and over and over != face_up:
+            reason = "%s (turned over: %s)" % (face_up, over)
+        notes.append(reason + (" - left out of the program" if STRICT
+                               else " - WRITTEN ANYWAY (STRICT is off)"))
+        if not STRICT:
+            pt, _vec = setup_maps(needed[0], lx, ly, lz)
+            feat = feature(hole.moved(pt), lx, ly, lz)
+            if feat["t"] != "none":
+                work[needed[0]].append((feat, dia))
+
+    if len(needed) > 1:
+        notes.append("two setups: %s drills everything reachable face up, "
+                     "then the piece is turned over about its long axis "
+                     "for %s" % (needed[0], needed[1]))
+    elif needed[0] == "B":
+        notes.append("one setup, but with the piece turned over - the "
+                     "drilling is all on the underside as modelled")
+    return [(mark, work[mark]) for mark in needed]
+
+
+def brep_to_setups(brep):
+    """One Brep -> [(mark, Part), ...]. Every Part carries the same notes."""
+    notes = []
     if brep is None or not brep.IsValid:
         raise ValueError("invalid Brep")
 
-    corners, holes, planars = read_brep(brep, part.notes)
-    corners = place(corners, holes, planars, part.notes)
+    corners, holes, planars = read_brep(brep, notes)
+    corners = place(corners, holes, planars, notes)
 
     x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
-    part.lx, part.ly = x1 - x0, y1 - y0
-    part.lz = (z1 - z0) if THICKNESS is None else THICKNESS
-    if part.lx < 1.0 or part.ly < 1.0 or part.lz < 0.5:
+    lx, ly = x1 - x0, y1 - y0
+    lz = (z1 - z0) if THICKNESS is None else THICKNESS
+    if lx < 1.0 or ly < 1.0 or lz < 0.5:
         raise ValueError("implausible part size %s x %s x %s mm"
-                         % (fnum(part.lx), fnum(part.ly), fnum(part.lz)))
-    check_flat(part)
+                         % (fnum(lx), fnum(ly), fnum(lz)))
+    check_flat(lx, ly, lz, notes)
 
-    for hole in holes:
-        emit_hole(part, hole)
-    part.macros.sort(key=lambda m: (m[0],
-                                    float(dict(m[2]).get("XA", 0)),
-                                    float(dict(m[2]).get("YA", 0))))
-    if CONTOUR:
-        part.contour = outline(planars, part)
-    return part
+    out = []
+    planned = plan(holes, lx, ly, lz, notes)
+    for i, (mark, work) in enumerate(planned):
+        part = Part()
+        part.lx, part.ly, part.lz = lx, ly, lz
+        part.notes = notes
+        for feat, dia in work:
+            m = macro(feat, dia, lz)
+            if m is not None:
+                part.macros.append(m)
+        part.macros.sort(key=lambda m: (m[0],
+                                        float(dict(m[2]).get("XA", 0)),
+                                        float(dict(m[2]).get("YA", 0))))
+        if CONTOUR and i == 0:
+            # The outline is cut once, in the first setup. After that the
+            # piece is no longer the rectangle the blank started as, so
+            # repeating the contour in the second file would cut air.
+            pt, vec = setup_maps(mark, lx, ly, lz)
+            moved = [(vec(n), [s.moved(pt) for s in segs])
+                     for n, segs in planars]
+            part.contour = outline(moved, part)
+            if part.contour and len(planned) > 1:
+                notes.append("the outline is cut in the first setup only - "
+                             "check the piece is still held well enough for "
+                             "the second, or cut the contour last")
+        out.append((mark, part))
+    return out
 
 
-def describe(part):
-    counts = {}
-    for _mid, name, _p in part.macros:
-        counts[name] = counts.get(name, 0) + 1
-    detail = ", ".join("%d x %s" % (v, k) for k, v in sorted(counts.items()))
-    if part.contour:
-        detail += (", " if detail else "") + "contour"
-    text = "%s x %s x %s mm   %s" % (fnum(part.lx), fnum(part.ly),
-                                     fnum(part.lz), detail or "no machining")
-    for note in dict.fromkeys(part.notes):
-        text += "\n  note: %s" % note
-    return text
+# ---------------------------------------------------------------------------
+# naming and reporting
+# ---------------------------------------------------------------------------
+
+def file_name(ident, part, mark, qty):
+    """<ID>_<length>x<width>-<F|B>_<quantity>.mpr"""
+    return "%s_%sx%s-%s_%s%s" % (ident, fnum(part.lx), fnum(part.ly),
+                                 mark, qty, EXT)
+
+
+def describe(ident, qty, setups):
+    _mark, first = setups[0]
+    lines = ["%s   %s x %s x %s mm   x%s   %d file%s"
+             % (ident, fnum(first.lx), fnum(first.ly), fnum(first.lz), qty,
+                len(setups), "" if len(setups) == 1 else "s")]
+    for mark, part in setups:
+        counts = {}
+        for _mid, name, _p in part.macros:
+            counts[name] = counts.get(name, 0) + 1
+        detail = ", ".join("%d x %s" % (v, k)
+                           for k, v in sorted(counts.items()))
+        if part.contour:
+            detail += (", " if detail else "") + "contour"
+        lines.append("  %s  %-11s %s"
+                     % (mark, "face up" if mark == "F" else "turned over",
+                        detail or "no machining"))
+    for note in dict.fromkeys(first.notes):
+        lines.append("  note: %s" % note)
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -674,25 +918,99 @@ def branches_of(tree):
     return [(GH_Path(0), [tree])]
 
 
+class SideInput(object):
+    """ID / QTY looked up by branch first, then by running part number.
+
+    So the inputs can be wired either way: a tree matching B branch for
+    branch, or one flat list in the same order as the parts.
+    """
+
+    def __init__(self, tree):
+        self.by_path = {}
+        self.flat = []
+        for path, items in branches_of(tree):
+            items = [v for v in items if v is not None]
+            self.by_path[str(path)] = items
+            self.flat.extend(items)
+
+    def get(self, path, j, n):
+        items = self.by_path.get(str(path))
+        if items:
+            return items[j] if j < len(items) else items[-1]
+        if n < len(self.flat):
+            return self.flat[n]
+        return None
+
+
+def clean(text):
+    """Keep a piece ID usable as a file name."""
+    out = []
+    for ch in str(text).strip():
+        out.append(ch if (ch.isalnum() or ch in "-+.") else "_")
+    return "".join(out).strip("_") or "part"
+
+
+def default_id(path, j, count):
+    """No ID wired: fall back on the branch path, so a flat list gives 0,1,2."""
+    base = str(path).strip("{}").replace(";", "-").strip()
+    return "%s-%d" % (base, j) if count > 1 else base
+
+
+# ID and QTY are optional: the component still runs with only B wired.
+try:
+    ID
+except NameError:
+    ID = None
+try:
+    QTY
+except NameError:
+    QTY = None
+
 MPR = DataTree[object]()
-LINES = DataTree[object]()
+NAME = DataTree[object]()
 INFO = DataTree[object]()
 
 if UNITS is not None and UNITS != Rhino.UnitSystem.Millimeters:
     INFO.Add("WARNING: the document is not in millimetres (%s). woodWOP "
              "expects mm - every size below is wrong." % UNITS, GH_Path(0))
 
+ids = SideInput(ID)
+qtys = SideInput(QTY)
+taken = {}
+n = 0
+
 for path, items in branches_of(B):
-    for brep in items:
+    for j, brep in enumerate(items):
         if brep is None:
             continue
         try:
-            part = brep_to_part(brep)
-            lines = mpr_lines(part)
-            MPR.Add(EOL.join(lines), path)
-            for line in lines:
-                LINES.Add(line, path)
-            INFO.Add(describe(part), path)
+            given = ids.get(path, j, n)
+            ident = (clean(given) if given is not None
+                     else default_id(path, j, len(items)))
+
+            qty = qtys.get(path, j, n)
+            try:
+                qty = max(1, int(round(float(qty))))
+            except (TypeError, ValueError):
+                qty = 1
+
+            setups = brep_to_setups(brep)
+            for mark, part in setups:
+                name = file_name(ident, part, mark, qty)
+                if name in taken:
+                    taken[name] += 1
+                    stem = name[:-len(EXT)] if EXT else name
+                    name = "%s(%d)%s" % (stem, taken[name], EXT)
+                    INFO.Add("WARNING: two pieces asked for the same file "
+                             "name - the second is now %s. Give them "
+                             "distinct IDs." % name, path)
+                else:
+                    taken[name] = 1
+                MPR.Add(render_mpr(part), path)
+                NAME.Add(name, path)
+            INFO.Add(describe(ident, qty, setups), path)
         except Exception as exc:
             MPR.Add(None, path)
+            NAME.Add(None, path)
             INFO.Add("ERROR: %s" % exc, path)
+        n += 1

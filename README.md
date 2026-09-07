@@ -56,9 +56,16 @@ stay interchangeable.
 
 `Tools/gh_brep2mpr.py` is the same MPR writer behind a Rhino 8 Script
 component: feed it a data tree of raw Breps (one part per branch, already
-lying flat in XY) and it returns one MPR program as text per branch. No DXF,
-no ACIS decoding — Rhino already holds the geometry, so the component reads
-cylinders straight off the Brep faces. See
+lying flat in XY) and it returns the MPR programs as text, with a file name
+for each. No DXF, no ACIS decoding — Rhino already holds the geometry, so the
+component reads cylinders straight off the Brep faces.
+
+It also knows what the drilling head is fitted with — which diameters the
+vertical array carries, and which bit sits on each side for horizontal bores.
+A part whose holes cannot all be reached in one clamping comes out as two
+programs, one face up and one for the piece turned over, named `-F` and `-B`.
+Anything the machine still cannot reach is reported rather than quietly
+written. See
 [Tools/README.md](Tools/README.md#grasshopper-component).
 
 ## Documentation
