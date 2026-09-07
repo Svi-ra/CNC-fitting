@@ -34,6 +34,8 @@ reported in INFO rather than corrected.
         along Z, open at the top      -> <102 \BohrVert\
         along X or Y, open at an edge -> <103 \BohrHoriz\
         any other angle               -> <104 \BohrUniv\
+    - a flat rectangular cavity floor between the two faces becomes a sawn
+      groove, <109 \Nuten\
     - an outline that is not the bounding rectangle becomes a contour ]1
       plus <105 \Konturfraesen\
 
@@ -46,7 +48,11 @@ out as more than one program (see MACHINE below):
       opens at the underside is reachable only with the piece turned over;
     - the horizontal spindles carry a different bit on each side: the **top
       edge** (Y = BR) drills 8 mm only, the **lower edge** (Y = 0) 4.5 mm
-      only, the **left and right edges** (X = 0, X = LA) do both.
+      only, the **left and right edges** (X = 0, X = LA) do both;
+    - the grooving saw runs **along X only** and its blade is 4 mm thick, so
+      a groove running across the part, or narrower than the blade, cannot be
+      cut. <109 \Nuten\ saws from the top face, so a groove in the underside
+      needs the piece turned over just as an underside bore does.
 
 The one allowed re-clamping is a **flip about the X axis**: the piece is
 turned face for back, which swaps the top and lower edges and brings the
@@ -112,6 +118,31 @@ MACHINE = {
 
 EDGE_NAME = {"YM": "top edge", "YP": "lower edge",
              "XM": "right edge", "XP": "left edge"}
+
+# The grooving saw. It runs along X only -- SAW_ALONG may be "X", "Y" or
+# "XY" if the unit ever swivels -- and the blade is SAW_KERF thick, so a
+# groove narrower than that cannot be cut at all. A wider one is fine:
+# woodWOP makes it in several passes, which is what OP="1" asks for.
+#
+# A groove is read off the solid as a flat rectangular cavity floor lying
+# between the two faces. GROOVE_MAX_WIDTH is where that stops being a groove
+# and starts being a pocket, which this tool does not convert.
+
+GROOVE = True             # detect grooves at all
+SAW_KERF = 4.0            # blade thickness, mm
+SAW_ALONG = "X"           # directions the saw can run: "X", "Y" or "XY"
+GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
+
+# woodWOP does not program a groove down its middle: XA/YA..XE/YE is one
+# EDGE of the groove and RK offsets the blade a full NB to one side. Checked
+# against a woodWOP 9.0.152 export of a known part --
+# Examples/WoodWop_export/0_472x420-F_1.mpr against Examples/Meshes/472x420.gltf
+# -- where a groove occupying Y 410..414 and running towards +X is written
+# XA="75" YA="410" XE="_BSX" YE="410" RK="WRKR". So with RK="WRKR" the groove
+# lies on the +Y side of a run towards +X; "WRKL" is the other side, and the
+# rotated equivalents apply to a run towards +Y. Set "NoWRK" to go back to
+# programming the centre line.
+GROOVE_RK = "WRKR"
 
 DIA_TOL = 0.2       # a measured diameter counts as a listed one within this
 STRICT = True       # True: leave unreachable bores out and report them
@@ -376,6 +407,28 @@ class Seg(object):
             self.mid = fn(self.mid)
 
 
+class Groove(object):
+    """A slot sawn into a face, held as the rectangle of its floor.
+
+    `lo` and `hi` are the two opposite corners of that rectangle, both at the
+    floor height; `normal` is which way the floor looks, and so which face the
+    slot was cut into.
+    """
+
+    def __init__(self, lo, hi, normal):
+        self.lo = lo
+        self.hi = hi
+        self.normal = normal
+
+    def moved(self, pt, vec):
+        """A copy in another setup frame. Both maps keep the floor flat and
+        axis aligned, so re-sorting the corners is all it takes."""
+        a, b = pt(self.lo), pt(self.hi)
+        return Groove((min(a[0], b[0]), min(a[1], b[1]), a[2]),
+                      (max(a[0], b[0]), max(a[1], b[1]), b[2]),
+                      vec(self.normal))
+
+
 def face_normal(face):
     """Outward normal of a face, honouring the face's orientation flag.
 
@@ -580,8 +633,8 @@ def feature(hole, lx, ly, lz):
         bot = abs(zlo) <= FACE_TOL
         if not top and not bot:
             return {"t": "none",
-                    "why": "closed internal bore at X=%s Y=%s - it reaches "
-                           "neither face" % (fnum(p0[0]), fnum(p0[1]))}
+                    "why": "closed internal bore at X=%s - it reaches neither "
+                           "face" % fnum(p0[0])}
         return {"t": "vert", "x": p0[0], "y": p0[1],
                 "zlo": zlo, "zhi": zhi, "top": top, "bot": bot,
                 "thru": top and bot}
@@ -598,8 +651,8 @@ def feature(hole, lx, ly, lz):
             bm, entry = ("XM" if along_x else "YM"), hi
         else:
             return {"t": "none",
-                    "why": "internal horizontal bore at X=%s Y=%s - it "
-                           "reaches no edge" % (fnum(p0[0]), fnum(p0[1]))}
+                    "why": "internal horizontal bore at X=%s - it reaches no "
+                           "edge" % fnum(p0[0])}
         return {"t": "horiz", "bm": bm, "entry": entry, "len": hi[i] - lo[i]}
 
     d = vnorm(vsub(p0, p1))
@@ -613,6 +666,85 @@ def feature(hole, lx, ly, lz):
             "len": vlen(vsub(p1, p0))}
 
 
+def find_grooves(planars, lz, notes):
+    """Slots read off the solid: a flat rectangular floor between the faces.
+
+    A face whose normal is +/-Z and whose height is neither 0 nor the panel
+    thickness is the bottom of something cut into the part. If it is a plain
+    axis-aligned rectangle of straight edges it is a sawn slot; anything else
+    -- a round-ended pocket, a free-form cavity, a floor split over several
+    faces -- is reported and left alone, as pockets always have been.
+    """
+    out = []
+    for normal, segs in planars:
+        if abs(abs(normal[2]) - 1.0) > 1e-3 or not segs:
+            continue
+        z = segs[0].p0[2]
+        if z <= FACE_TOL or z >= lz - FACE_TOL:
+            continue                    # the part's own top or bottom face
+
+        if len(segs) < 3 or all(sg.radius for sg in segs):
+            continue                    # the flat bottom of a blind bore
+
+        flat = all(abs(p[2] - z) <= GEO_TOL
+                   for sg in segs for p in (sg.p0, sg.p1))
+        if len(segs) != 4 or not flat or any(sg.radius for sg in segs):
+            notes.append("flat cavity floor at Z=%s is not a plain rectangle "
+                         "- round-ended slots and pockets are not converted"
+                         % fnum(z))
+            continue
+
+        xs = [sg.p0[0] for sg in segs]
+        ys = [sg.p0[1] for sg in segs]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        got = set((round(x, 3), round(y, 3)) for x, y in zip(xs, ys))
+        want = set((round(a, 3), round(b, 3))
+                   for a in (x0, x1) for b in (y0, y1))
+        if got != want or x1 - x0 < GEO_TOL or y1 - y0 < GEO_TOL:
+            notes.append("flat cavity floor at Z=%s is not square to X and Y "
+                         "- not converted" % fnum(z))
+            continue
+
+        out.append(Groove((x0, y0, z), (x1, y1, z), normal))
+    return out
+
+
+def groove_feature(g, lx, ly, lz):
+    """What this slot is, in the setup frame it is handed in."""
+    z = g.lo[2]
+    up = g.normal[2] > 0
+    w = g.hi[0] - g.lo[0]
+    h = g.hi[1] - g.lo[1]
+    if abs(w - h) <= GEO_TOL:
+        return {"t": "none",
+                "why": "square flat cavity %s x %s mm at X=%s - that is a "
+                       "pocket, not a groove"
+                       % (fnum(w), fnum(h), fnum(g.lo[0]))}
+
+    # The run is always written towards +X or +Y, so which edge to programme
+    # follows straight from RK: see the note on GROOVE_RK above.
+    if h < w:
+        dirn, nb, run = "X", h, w
+        if GROOVE_RK == "NoWRK":
+            edge = 0.5 * (g.lo[1] + g.hi[1])
+        else:
+            edge = g.lo[1] if GROOVE_RK == "WRKR" else g.hi[1]
+        xa, ya, xe, ye = g.lo[0], edge, g.hi[0], edge
+        full = g.lo[0] <= FACE_TOL and g.hi[0] >= lx - FACE_TOL
+    else:
+        dirn, nb, run = "Y", w, h
+        if GROOVE_RK == "NoWRK":
+            edge = 0.5 * (g.lo[0] + g.hi[0])
+        else:
+            edge = g.hi[0] if GROOVE_RK == "WRKR" else g.lo[0]
+        xa, ya, xe, ye = edge, g.lo[1], edge, g.hi[1]
+        full = g.lo[1] <= FACE_TOL and g.hi[1] >= ly - FACE_TOL
+
+    return {"t": "groove", "up": up, "dirn": dirn, "nb": nb, "run": run,
+            "ti": (lz - z) if up else z, "full": full,
+            "xa": xa, "ya": ya, "xe": xe, "ye": ye}
+
+
 def diameters(key):
     return ", ".join(fnum(d) for d in MACHINE[key])
 
@@ -623,10 +755,6 @@ def reachable(feat, dia):
         return False, dia, feat["why"]
 
     if feat["t"] == "vert":
-        if not feat["top"]:
-            return False, dia, (
-                "%s mm vertical bore opens at the underside - the array only "
-                "drills from above" % fnum(dia))
         key = "vert_thru" if feat["thru"] else "vert_blind"
         nom = nominal(dia, MACHINE[key])
         if nom is None:
@@ -634,7 +762,32 @@ def reachable(feat, dia):
                 "%s mm %s vertical bore - the array carries %s"
                 % (fnum(dia), "through" if feat["thru"] else "dead-end",
                    diameters(key)))
+        if not feat["top"]:
+            return False, dia, (
+                "%s mm vertical bore opens at the underside - the array only "
+                "drills from above" % fnum(dia))
         return True, nom, None
+
+    if feat["t"] == "groove":
+        nb = feat["nb"]
+        if feat["dirn"] not in SAW_ALONG:
+            return False, nb, (
+                "%s mm groove runs along %s - the saw runs along %s"
+                % (fnum(nb), feat["dirn"], " and ".join(SAW_ALONG)))
+        if nb < SAW_KERF - GEO_TOL:
+            return False, nb, (
+                "%s mm groove - the blade is %s mm thick and will not fit"
+                % (fnum(nb), fnum(SAW_KERF)))
+        if nb > GROOVE_MAX_WIDTH:
+            return False, nb, (
+                "%s mm wide flat cavity - over GROOVE_MAX_WIDTH, so it is "
+                "read as a pocket rather than a groove" % fnum(nb))
+        if not feat["up"]:
+            return False, nb, (
+                "%s mm groove in the underside - <109 Nuten> saws from the "
+                "top face only, so the piece has to be turned over"
+                % fnum(nb))
+        return True, nb, None
 
     if feat["t"] == "horiz":
         bm = feat["bm"]
@@ -667,6 +820,23 @@ def macro(feat, dia, lz):
             ("BM", feat["bm"]),
             ("AN", "1"), ("AB", "0"), ("F_", "STANDARD")])
 
+    if feat["t"] == "groove":
+        # Parameters and their order follow woodWOP's own export of this
+        # macro; TV="0" leaves the scoring pass off, and MOD2 lets the blade
+        # run in and out clear of a groove that reaches both edges.
+        return (109, "Nuten", [
+            ("XA", fnum(feat["xa"])), ("YA", fnum(feat["ya"])), ("WI", "0"),
+            ("XE", fnum(feat["xe"])), ("YE", fnum(feat["ye"])),
+            ("NB", fnum(dia)),
+            ("RK", GROOVE_RK),
+            ("EM", "MOD2" if feat["full"] else "MOD0"),
+            ("AD", "0"),
+            ("TI", fnum(feat["ti"])),
+            ("TV", "0"), ("VT", "0"), ("MV", "GL"),
+            ("XY", "80"), ("MN", "GL"), ("BL", "0"),
+            ("OP", "0"), ("AN", "0"),
+            ("S_", "STANDARD"), ("F_", "STANDARD")])
+
     if feat["t"] == "univ":
         e = feat["entry"]
         return (104, "BohrUniv", [
@@ -690,18 +860,40 @@ def loop_area(segs):
     return total
 
 
+def is_rectangle(segs, lx, ly):
+    """Does this loop go round the panel's bounding rectangle and nothing else?"""
+    if len(segs) != 4 or any(s.radius for s in segs):
+        return False
+    corners = set((round(s.p0[0], 2), round(s.p0[1], 2)) for s in segs)
+    return corners == {(0.0, 0.0), (round(lx, 2), 0.0),
+                       (round(lx, 2), round(ly, 2)), (0.0, round(ly, 2))}
+
+
 def outline(planars, part):
-    """Contour elements for the top face, when it is not just the rectangle."""
-    best = None
-    best_z = None
+    """Contour elements for the panel outline, when it is not the rectangle.
+
+    Both faces are looked at, not only the top one. A groove that runs out to
+    an edge cuts a notch in the face it was sawn into, and that notch belongs
+    to the groove, not to the outline -- following it would rout the panel to
+    the shape of its own grooving. So if either face still goes round the
+    plain rectangle the part is a rectangle and there is nothing to rout; if
+    neither does, the less interrupted of the two is the outline.
+    """
+    faces = []
     for normal, segs in planars:
-        if abs(normal[2] - 1.0) > 1e-3 or not segs:
+        if not segs or abs(abs(normal[2]) - 1.0) > 1e-3:
             continue
-        z = max(s.p0[2] for s in segs)
-        if best_z is None or z > best_z + GEO_TOL:
-            best_z, best = z, segs
-    if not best or abs(best_z - part.lz) > 0.5:
+        z = segs[0].p0[2]
+        if normal[2] > 0 and abs(z - part.lz) <= 0.5:
+            faces.append(segs)
+        elif normal[2] < 0 and abs(z) <= 0.5:
+            faces.append(segs)
+    if not faces:
         return None
+    for segs in faces:
+        if is_rectangle(segs, part.lx, part.ly):
+            return None                 # plain rectangle: WerkStck covers it
+    best = max(faces, key=lambda sg: abs(loop_area(sg)))
 
     if loop_area(best) < 0:
         # Turning the part over mirrors the outline. Walk it the other way so
@@ -719,16 +911,6 @@ def outline(planars, part):
         else:
             elems.append(("KL", [("X", cnum(s.p1[0])), ("Y", cnum(s.p1[1]))]))
 
-    if len(elems) == 5 and all(k == "KL" for k, _v in elems[1:]):
-        corners = set()
-        for _k, vals in elems:
-            d = dict(vals)
-            corners.add((round(float(d["X"]), 2), round(float(d["Y"]), 2)))
-        rect = {(0.0, 0.0), (round(part.lx, 2), 0.0),
-                (round(part.lx, 2), round(part.ly, 2)),
-                (0.0, round(part.ly, 2))}
-        if corners == rect:
-            return None                 # plain rectangle: WerkStck covers it
     return elems
 
 
@@ -753,7 +935,7 @@ def check_flat(lx, ly, lz, notes):
 # planning the setups
 # ---------------------------------------------------------------------------
 
-def plan(holes, lx, ly, lz, notes):
+def plan(holes, grooves, lx, ly, lz, notes):
     """Split the drilling over as few setups as the machine allows.
 
     Every bore is tried face up and turned over. One that works only one way
@@ -761,10 +943,14 @@ def plan(holes, lx, ly, lz, notes):
     setup already needed, so a part that fits in one clamping stays one file.
     Whatever works neither way is reported and, under STRICT, left out.
 
-    Returns [(mark, [(feature, nominal diameter), ...]), ...], first setup
-    first.
+    Grooves go through the same mill: the saw cuts from the top face only,
+    so a slot in the underside needs the piece turned over exactly as an
+    underside bore does, and rides along with that setup when there is one.
+
+    Returns [(mark, [(feature, size), ...]), ...], first setup first, where
+    size is the nominal diameter of a bore or the width of a groove.
     """
-    tried = []
+    jobs = []
     for hole in holes:
         dia = hole.dia
         if SNAP > 0:
@@ -773,29 +959,39 @@ def plan(holes, lx, ly, lz, notes):
             notes.append("round opening %s mm left as geometry, not drilled "
                          "(over MAX_DIA)" % fnum(dia))
             continue
+        jobs.append(("hole", Hole(hole.p0, hole.p1, dia), dia))
+    for groove in grooves:
+        jobs.append(("groove", groove, 0.0))
 
+    tried = []
+    for kind, item, size in jobs:
         opts = {}
         why = {}
         for mark in SETUPS:
-            pt, _vec = setup_maps(mark, lx, ly, lz)
-            feat = feature(hole.moved(pt), lx, ly, lz)
-            ok, nom, reason = reachable(feat, dia)
+            pt, vec = setup_maps(mark, lx, ly, lz)
+            if kind == "hole":
+                feat = feature(item.moved(pt), lx, ly, lz)
+                want = size
+            else:
+                feat = groove_feature(item.moved(pt, vec), lx, ly, lz)
+                want = feat.get("nb", 0.0)
+            ok, nom, reason = reachable(feat, want)
             if ok:
                 opts[mark] = (feat, nom)
-                if abs(nom - dia) > 0.001:
+                if kind == "hole" and abs(nom - want) > 0.001:
                     notes.append("%s mm bore taken as the %s mm bit"
-                                 % (fnum(dia), fnum(nom)))
+                                 % (fnum(want), fnum(nom)))
             else:
                 why[mark] = reason
-        tried.append((hole, dia, opts, why))
+        tried.append((kind, item, size, opts, why))
 
     needed = [mark for mark in SETUPS
-              if any(len(o) == 1 and mark in o for _h, _d, o, _w in tried)]
+              if any(len(o) == 1 and mark in o for _k, _i, _s, o, _w in tried)]
     if not needed:
         needed = ["F"]
 
     work = dict((mark, []) for mark in needed)
-    for hole, dia, opts, why in tried:
+    for kind, item, size, opts, why in tried:
         here = [m for m in needed if m in opts]
         if here:
             feat, nom = opts[here[0]]
@@ -811,18 +1007,20 @@ def plan(holes, lx, ly, lz, notes):
         notes.append(reason + (" - left out of the program" if STRICT
                                else " - WRITTEN ANYWAY (STRICT is off)"))
         if not STRICT:
-            pt, _vec = setup_maps(needed[0], lx, ly, lz)
-            feat = feature(hole.moved(pt), lx, ly, lz)
+            pt, vec = setup_maps(needed[0], lx, ly, lz)
+            feat = (feature(item.moved(pt), lx, ly, lz) if kind == "hole"
+                    else groove_feature(item.moved(pt, vec), lx, ly, lz))
             if feat["t"] != "none":
-                work[needed[0]].append((feat, dia))
+                work[needed[0]].append(
+                    (feat, size if kind == "hole" else feat["nb"]))
 
     if len(needed) > 1:
-        notes.append("two setups: %s drills everything reachable face up, "
-                     "then the piece is turned over about its long axis "
-                     "for %s" % (needed[0], needed[1]))
+        notes.append("two setups: %s does everything reachable face up, then "
+                     "the piece is turned over about its long axis for %s"
+                     % (needed[0], needed[1]))
     elif needed[0] == "B":
         notes.append("one setup, but with the piece turned over - the "
-                     "drilling is all on the underside as modelled")
+                     "machining is all on the underside as modelled")
     return [(mark, work[mark]) for mark in needed]
 
 
@@ -843,8 +1041,10 @@ def brep_to_setups(brep):
                          % (fnum(lx), fnum(ly), fnum(lz)))
     check_flat(lx, ly, lz, notes)
 
+    grooves = find_grooves(planars, lz, notes) if GROOVE else []
+
     out = []
-    planned = plan(holes, lx, ly, lz, notes)
+    planned = plan(holes, grooves, lx, ly, lz, notes)
     for i, (mark, work) in enumerate(planned):
         part = Part()
         part.lx, part.ly, part.lz = lx, ly, lz

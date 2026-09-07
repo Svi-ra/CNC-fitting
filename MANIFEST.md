@@ -21,8 +21,10 @@ CNC-fitting/
 │  ├─ CAD-models/             the DXF/DWG sources
 │  │  └─ MPR/                 converter output (generated)
 │  ├─ Grasshopper/            the parametric model the DXFs come from
+│  ├─ Meshes/                 one part as a 3D model, paired with the export
 │  ├─ Model-associated/       one part in every woodWOP-related format
-│  └─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
+│  ├─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
+│  └─ WoodWop_export/         woodWOP's own program for the meshed part
 └─ Tools/                     the converters, the checker, the GH component
 ```
 
@@ -91,6 +93,25 @@ numbers 15…121, sizes 100 × 45 to 1251 × 520 mm. Macro mix: 474 `BohrVert`,
 This is the **behavioural reference** for generated output — real files that
 run on the machine. `Tools/check_mpr.py` passes on all 82.
 
+### `Examples/WoodWop_export/` and `Examples/Meshes/` — the groove reference
+
+One part in two forms: `0_472x420-F_1.mpr`, a woodWOP 9.0.152 program for a
+472 × 420 × 18 panel, and `472x420.gltf`, the same panel as a mesh (metres,
+Y-up, in assembly position — thickness along X). Ten bores and one groove.
+
+This pair is the **only ground truth in the repository for `<109 \Nuten\`**,
+and settled three things the format spec does not say plainly:
+
+- the macro is `\Nuten\`, not the spec's machine-translated `\grooveen\`;
+- `XA/YA`…`XE/YE` is one **edge** of the groove, with `RK` offsetting the
+  blade a full `NB` to one side — the export writes `YA="_BSY-10"` and
+  `RK="WRKR"` for a groove the model puts at Y 410…414;
+- a groove running out to an edge notches the face it was sawn into, which is
+  not part of the panel outline.
+
+The two files disagree on the groove's section — the model has 4 mm wide × 9
+deep, the program says 8 × 7. Position, run and side agree.
+
 ### `Examples/Grasshopper/`
 
 `Noptiera ND01xx_test_suruburi.gh` — the parametric definition the DXF exports
@@ -102,8 +123,8 @@ the Ø8 blind holes are dowels).
 | File | Purpose |
 | --- | --- |
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
-| `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, contour references. |
-| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size and drillings from the geometry alone, checks every bore against what the drilling head carries, and splits a part over two setups — face up and turned over — when one clamping cannot reach everything. |
+| `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, groove width and run, contour references. |
+| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over — when one clamping cannot reach everything. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
 
@@ -130,7 +151,7 @@ message.
 ```
 Grasshopper (.gh)
       │
-      ├─ Tools/gh_brep2mpr.py ─────────────────────────► MPR text
+      ├─ Tools/gh_brep2mpr.py ────────────────────► MPR text + names
       │     (Brep straight to MPR, no export at all)        │
       │                                                     │
       │  Pancake export                                     │

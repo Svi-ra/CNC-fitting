@@ -12,6 +12,7 @@ the spindle:
   * every macro coordinate lies inside the workpiece
   * ZA of a horizontal drilling lies between 0 and the thickness
   * TI of a vertical drilling does not exceed the thickness
+  * a <109 Nuten> groove runs somewhere, and does not saw through the part
   * drill diameters are in a plausible range
   * <105 Konturfraesen> references contour elements that actually exist
 
@@ -116,11 +117,16 @@ def check_text(txt, min_dia, max_dia):
                 return None
 
         xa, ya, za = num("XA"), num("YA"), num("ZA")
+        xe, ye, nb = num("XE"), num("YE"), num("NB")
         ti, du = num("TI"), num("DU")
         if xa is not None and not -0.01 <= xa <= lx + 0.01:
             issues.append("%s: XA=%g outside 0..%g" % (name, xa, lx))
         if ya is not None and not -0.01 <= ya <= ly + 0.01:
             issues.append("%s: YA=%g outside 0..%g" % (name, ya, ly))
+        if xe is not None and not -0.01 <= xe <= lx + 0.01:
+            issues.append("%s: XE=%g outside 0..%g" % (name, xe, lx))
+        if ye is not None and not -0.01 <= ye <= ly + 0.01:
+            issues.append("%s: YE=%g outside 0..%g" % (name, ye, ly))
         if za is not None and not -0.01 <= za <= lz + 0.01:
             issues.append("%s: ZA=%g outside 0..%g" % (name, za, lz))
         if name in ("BohrVert", "UfluBohr") and ti and ti > lz + 0.01:
@@ -134,6 +140,14 @@ def check_text(txt, min_dia, max_dia):
         if name == "BohrHoriz" and p.get("BM") not in ("XP", "XM", "YP", "YM",
                                                        "C", None):
             issues.append("BohrHoriz: unknown BM=%r" % p.get("BM"))
+        if name == "Nuten":
+            if ti is not None and ti > lz - 0.01:
+                issues.append("Nuten: TI=%g saws through the %g mm part"
+                              % (ti, lz))
+            if nb is not None and nb <= 0:
+                issues.append("Nuten: NB=%g is not a width" % nb)
+            if None not in (xa, ya, xe, ye) and                     abs(xa - xe) < 1e-9 and abs(ya - ye) < 1e-9:
+                issues.append("Nuten: start and end are the same point")
 
     for _ci, last in re.findall(r'EE="(\d+):(\d+)"', txt):
         if int(last) not in elements:

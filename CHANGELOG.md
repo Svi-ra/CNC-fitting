@@ -9,6 +9,88 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.4.0] — 2026-09-07
+
+`Tools/gh_brep2mpr.py` reads grooves off the solid and writes them as
+`<109 \Nuten\`. What the macro actually has to look like was settled against a
+woodWOP export of a part this repository also holds as a mesh, which is now
+kept as the reference for it.
+
+### Added
+
+- **Groove detection.** A flat rectangular cavity floor lying between the two
+  faces becomes a sawn groove. Its short dimension is the width, its long one
+  the run, and its height gives the depth. Round-ended slots, pockets and
+  free-form cavities are reported and left alone, as before.
+- **The grooving saw** joins the machine model: `SAW_KERF` (4 mm blade),
+  `SAW_ALONG` (`"X"` — the directions the unit can run), and
+  `GROOVE_MAX_WIDTH`, above which a flat cavity is read as a pocket rather
+  than a groove. A groove narrower than the blade, or running a direction the
+  saw cannot, is reported and left out. `GROOVE` turns the whole thing off.
+- Grooves go through the same setup planner as bores. `<109 Nuten>` saws from
+  the top face and has no Z reference — MPR 4.x has no below-table sawing
+  macro at all, only `<131 UfluBohr>`, `<151 UflurTasche>` and
+  `<113 Unterflur-Fraesen>` — so a groove in the underside needs the piece
+  turned over exactly as an underside bore does, and rides along with that
+  setup when the drilling already calls for one.
+- `Tools/check_mpr.py` checks the new macro: `XE`/`YE` inside the part, `TI`
+  not sawing through it, `NB` a real width, start and end not the same point.
+- `Examples/WoodWop_export/` and `Examples/Meshes/` — the woodWOP program and
+  the 3D model of one part, the ground truth for everything below.
+
+### Fixed
+
+- **A groove was written down its middle.** woodWOP programs a groove by one
+  of its **edges** and offsets the blade a full `NB` to one side with `RK`;
+  the tool wrote the centre line with `RK="NoWRK"`, putting every groove half
+  a blade-width out of position. The edge is now programmed and `RK` carries
+  the offset, controlled by the new `GROOVE_RK`.
+- **A groove that ran out to an edge was routed round.** Such a groove
+  notches the face it was sawn into, so that face's outer loop is no longer
+  the bounding rectangle and `outline` followed the notch — emitting a
+  `<105 Konturfraesen>` that would have cut the panel to the shape of its own
+  grooving. `outline` now considers both faces: if either still goes round
+  the plain rectangle the part is a rectangle and there is nothing to rout,
+  and if neither does, the less interrupted of the two is the outline.
+- **The flat bottom of every blind bore was reported as an unconvertible
+  cavity.** A loop made only of arcs is a drill bottom and is now passed over
+  in silence.
+- The obstacle a flip cannot fix is reported first. A groove running the
+  wrong direction said it was an underside problem in the turned-over setup;
+  the same applied to a bore whose diameter was wrong as well as its face.
+  Failures that classify no feature at all now quote X only, which the flip
+  leaves alone, so they are worded the same in both setups and reported once.
+
+### Verification
+
+Against `Examples/WoodWop_export/0_472x420-F_1.mpr`, a woodWOP 9.0.152
+program, and `Examples/Meshes/472x420.gltf`, the same 472 × 420 × 18 part:
+
+- The mesh decodes into the part frame with the two Ø15 bores at (438, 50)
+  and (438, 351) pinning the mapping. Rebuilt as Brep-shaped input, all ten
+  bores come out identical to the export — four `BohrHoriz` on `XM`
+  including the 27.655 mm depth, six `BohrVert` from Ø5 to Ø15.
+- The groove agrees on position, run and side: `XA="75" YA="410" XE="472"
+  YE="410" RK="WRKR" EM="MOD0"`, against a modelled floor spanning Y 410…414
+  at Z 9. It disagrees on section — the model has 4 mm × 9 deep where the
+  woodWOP program says 8 × 7 — which is a difference between those two files,
+  not something the converter decides.
+- No contour is emitted, matching the export, and no notes about the bore
+  bottoms.
+- The file name comes out `0_472x420-F_1.mpr`, the export's own name.
+- `check_mpr.py` still passes on all 82 production programs and on everything
+  generated here. The one finding in `Examples/CAD-models/Noptiera-2.mpr`
+  predates this work and is in a hand-built scratch file.
+
+### Notes
+
+- `<109 \Nuten\` is confirmed by the export. The spec is machine-translated
+  and calls it `<109 \grooveen\` — "Nuten" with *Nut* → *groove*, the same
+  artefact that turns `\Konturfraesen\` into `\Contourfraesen\`.
+- The `RK="WRKR"` side convention is confirmed for a run towards **+X**, the
+  only direction this saw runs. The +Y case, reachable by setting
+  `SAW_ALONG = "XY"`, is derived by rotating that result and is unverified.
+
 ## [0.3.0] — 2026-09-07
 
 `Tools/gh_brep2mpr.py` now writes programs the machine can actually run: what

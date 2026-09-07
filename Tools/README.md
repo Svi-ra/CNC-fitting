@@ -69,9 +69,9 @@ Layer numbers use `_` as the decimal point, as woodWOP does
 | outline that is not the bounding rectangle | contour `]n` + `<105 \Konturfraesen\` |
 
 This is the DXF converter's mapping. The Grasshopper component below
-never writes `<131 UfluBohr>`: its machine drills from one side only,
-so a bore opening at the underside is handled by turning the piece
-over instead.
+differs in two ways: it never writes `<131 UfluBohr>`, because its machine
+drills from one side only and an underside bore is handled by turning the
+piece over, and it additionally writes `<109 \Nuten\` for sawn grooves.
 
 Coordinate system (woodWOP coordinate system 0): origin at the lower left
 corner of the underside, X = length, Y = width, Z = 0 at the bottom face.
@@ -162,7 +162,9 @@ Two constraints follow from it:
   piece turned over. A bore that breaks out the far side is checked against
   `vert_thru`, everything else against `vert_blind`;
 * the horizontal spindles carry a **different bit on each side** — the top
-  edge drills Ø8 only, the lower edge Ø4.5 only, left and right do both.
+  edge drills Ø8 only, the lower edge Ø4.5 only, left and right do both;
+* the grooving saw runs **along X only** with a 4 mm blade, and saws from the
+  top face — see [Grooves](#grooves) below.
 
 The one re-clamping the planner will use is a **flip about the X axis**: the
 piece is turned face for back, which swaps the top and lower edges and brings
@@ -196,6 +198,60 @@ in plan. If the shop means it the other way round, swap those two lines in
 When a part needs two setups *and* has a contour, the outline is cut in the
 first program only — repeating it would cut air — and `INFO` says so, because
 a piece cut free in the first setup may no longer be held for the second.
+
+### Grooves
+
+A groove is read off the solid as a **flat rectangular cavity floor lying
+between the two faces** — a planar face whose normal is along Z at a height
+that is neither 0 nor the panel thickness, with four straight edges square to
+X and Y. Its short dimension is the width, its long one the run, and its
+height gives the depth. A round-ended slot, a floor split over several faces
+or any free-form cavity is reported in `INFO` and left alone, as pockets
+always have been; the flat bottom of a blind bore is passed over in silence.
+
+```python
+GROOVE = True             # detect grooves at all
+SAW_KERF = 4.0            # blade thickness, mm
+SAW_ALONG = "X"           # directions the saw can run: "X", "Y" or "XY"
+GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
+GROOVE_RK = "WRKR"        # which side of the programmed edge the groove lies
+```
+
+A groove is rejected and reported if it runs a direction the saw cannot, is
+narrower than the blade, or is wider than `GROOVE_MAX_WIDTH` — that is where
+a groove stops being a groove and starts being a pocket. Wider than the blade
+but under that limit is fine: woodWOP makes it in several passes.
+
+Grooves go through the same setup planner as bores. `<109 Nuten>` saws from
+the top face and carries no Z reference, and MPR 4.x has **no below-table
+sawing macro at all** — only `<131 UfluBohr>`, `<151 UflurTasche>` and
+`<113 Unterflur-Fraesen>`, which are drilling, pocketing and routing. So a
+groove in the underside needs the piece turned over exactly as an underside
+bore does, and rides along with that setup when the drilling already calls
+for one.
+
+**woodWOP programs a groove by one of its edges, not down its middle.**
+`XA/YA`…`XE/YE` is one edge and `RK` offsets the blade a full `NB` to one
+side. With `RK="WRKR"` the groove lies on the +Y side of a run towards +X.
+This is checked against `Examples/WoodWop_export/0_472x420-F_1.mpr`, a
+woodWOP 9.0.152 program for the part that `Examples/Meshes/472x420.gltf`
+holds as a model: a groove occupying Y 410…414 is written
+
+```
+<109 \Nuten\   XA="75"  YA="410"  XE="_BSX"  YE="410"  NB="8"  RK="WRKR"
+```
+
+Set `GROOVE_RK` to `"WRKL"` for the other side, or to `"NoWRK"` to programme
+the centre line instead. The side convention is confirmed only for a run
+towards +X, the direction this saw runs; the +Y case, reachable by setting
+`SAW_ALONG = "XY"`, is derived by rotating that result and is unverified.
+
+A groove that runs out to an edge **notches the face it was sawn into**, so
+that face's outer loop is no longer the bounding rectangle. That notch
+belongs to the groove, not to the panel outline — following it would rout the
+panel to the shape of its own grooving — so the outline is taken from
+whichever of the two faces still goes round the plain rectangle, and only
+when neither does is a contour emitted at all.
 
 ### File names
 
@@ -243,11 +299,14 @@ outline becomes a contour when it is not simply the bounding rectangle.
 | `STRICT` | on | leave bores the head cannot reach out of the program; off writes them anyway |
 | `DIA_TOL` | 0.2 | how far a measured diameter may sit from a listed one and still count as that bit |
 | `EXT` | `.mpr` | appended to every `NAME` |
+| `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
+| `SAW_ALONG` | `"X"` | the directions the saw unit can run |
+| `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
 
 Which face ends up on top is **not** a setting: it is decided per part by the
 planner above, because it is a machining choice rather than a property of the
 model. The rest of the block is `SNAP`, `MAX_DIA`, `BM_VERT`, `THICKNESS`,
-`CONTOUR` and `EOL`.
+`CONTOUR`, `GROOVE`, `GROOVE_MAX_WIDTH` and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
 `open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason above.
@@ -264,15 +323,15 @@ in `INFO` if it is not.
   of the shop's existing programs, and `check_mpr.py` passes on all 82 of them
   as well as on everything this tool generates — but the first converted
   program should still be opened in woodWOP and dry-run before it cuts.
-* **The two-setup split covers drilling only.** Contour milling,
-  pockets and grooves are not checked against the machine, and the
-  `B` program assumes the operator turns the piece over about its
-  long axis and re-references it to the same zero corner.
+* **The two-setup split covers drilling and grooving.** Contour milling is
+  not checked against the machine, and the `B` program assumes the operator
+  turns the piece over about its long axis and re-references it to the same
+  zero corner.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.
-* Pockets and grooves modelled as solid cavities are **not** converted
-  (`<112 Tasche>`, `<109 Grooving>` are not generated). Only the outer
-  outline and bores are read from a solid.
+* Pockets modelled as solid cavities are **not** converted
+  (`<112 Tasche>` is not generated). The Grasshopper component does read
+  sawn grooves — see [Grooves](#grooves) — but `dxf2mpr.py` does not.
 * Feed rates, spindle speeds and tool numbers are left at `STANDARD` /
   woodWOP defaults. `BohrVert` is written with `BM="LS"`, `S_="2"` — change
   with `--bm-vert` or edit in woodWOP.
