@@ -67,13 +67,31 @@ edge. Turn the finished part back and every hole is where the model put it.
 Anything the machine still cannot reach is reported in INFO and left out of
 the program (set STRICT = False to have it written out anyway).
 
+Identical panels
+----------------
+Solids of the same shape are converted once. A nested sheet where the same
+panel appears twenty times gives one program, not twenty: the copies are
+recognised before anything is planned, and their quantities are added up, so
+the file comes out named for the total. The copies still get a line in INFO
+saying which program covers them.
+
+Two solids count as the same shape when they measure the same from the corner
+of their own bounding boxes, within DUP_TOL -- so it does not matter where in
+the model they sit. Orientation is deliberately not normalised: a copy turned
+end for end has its holes at the other end and is a different program. Set
+MERGE_IDENTICAL = False to convert every solid separately.
+
+The ID of the first solid of a group names the programs. Where the copies
+carried IDs of their own, INFO says so.
+
 File names
 ----------
     <ID>_<length>x<width>-<F|B>_<quantity>.mpr
 
-`F` = face up, as modelled. `B` = turned over. The quantity is whatever came
-in on QTY (1 if nothing did), and is the same on every program of one piece.
-With no ID input the branch path is used, so a flat list gives 0, 1, 2 ...
+`F` = face up, as modelled. `B` = turned over. The quantity is the sum of QTY
+over the identical solids folded into this program (1 per solid if nothing
+came in on QTY), and is the same on every program of one piece. With no ID
+input the branch path is used, so a flat list gives 0, 1, 2 ...
 """
 
 import math
@@ -94,6 +112,9 @@ LONG_X = True       # turn the part so its long side runs along X
 CONTOUR = True      # emit a contour when the outline is not a rectangle
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
+
+MERGE_IDENTICAL = True  # solids of the same shape share one program
+DUP_TOL = 0.01          # two solids count as the same shape within this, mm
 
 # ---------------------------------------------------------------------------
 # the machine
@@ -1073,6 +1094,54 @@ def brep_to_setups(brep):
 
 
 # ---------------------------------------------------------------------------
+# identical panels
+# ---------------------------------------------------------------------------
+
+def geometry_key(brep):
+    """A shape fingerprint, so the same panel is only converted once.
+
+    Two solids match when they are the same shape in the same orientation,
+    wherever they sit in the model: everything is measured from the corner of
+    the part's own bounding box, so a nested sheet of copies folds into one
+    program. Orientation is deliberately *not* normalised -- a copy turned end
+    for end carries its holes at the other end and is a different program.
+
+    Nothing here calls the converter, so a duplicate costs a bounding box and
+    a walk over the vertices instead of a full conversion.
+    """
+    box = brep.GetBoundingBox(True)
+    org = (box.Min.X, box.Min.Y, box.Min.Z)
+
+    def q(p):
+        """A point relative to the bounding box corner, in DUP_TOL steps."""
+        return (int(round((p[0] - org[0]) / DUP_TOL)),
+                int(round((p[1] - org[1]) / DUP_TOL)),
+                int(round((p[2] - org[2]) / DUP_TOL)))
+
+    size = q((box.Max.X, box.Max.Y, box.Max.Z))
+
+    # Vertex positions alone already separate two different panels; the face
+    # list adds the radius and axis of every bore, which vertices do not carry.
+    verts = sorted(q(p3(v.Location)) for v in brep.Vertices)
+
+    faces = []
+    for face in brep.Faces:
+        ok, cyl = face.UnderlyingSurface().TryGetCylinder(TOL)
+        if ok:
+            tag = ("cyl", int(round(cyl.Radius / DUP_TOL)),
+                   tuple(int(round(c / DUP_TOL))
+                         for c in canonical_axis(p3(cyl.Axis))))
+        else:
+            ok, _pl = face.TryGetPlane(TOL)
+            tag = ("pln" if ok else "srf", 0, (0, 0, 0))
+        fb = face.GetBoundingBox(True)
+        faces.append(tag + q(p3(fb.Min)) + q(p3(fb.Max)))
+    faces.sort()
+
+    return (size, tuple(verts), tuple(faces))
+
+
+# ---------------------------------------------------------------------------
 # naming and reporting
 # ---------------------------------------------------------------------------
 
@@ -1082,11 +1151,21 @@ def file_name(ident, part, mark, qty):
                                  mark, qty, EXT)
 
 
-def describe(ident, qty, setups):
+def describe(ident, qty, setups, copies=()):
     _mark, first = setups[0]
     lines = ["%s   %s x %s x %s mm   x%s   %d file%s"
              % (ident, fnum(first.lx), fnum(first.ly), fnum(first.lz), qty,
                 len(setups), "" if len(setups) == 1 else "s")]
+    if copies:
+        names = [c[2] for c in copies]
+        shown = ", ".join(names[:8]) + (", ..." if len(names) > 8 else "")
+        lines.append("  %d identical solid%s folded in (%s) - converted once, "
+                     "their quantities are in the x%s above"
+                     % (len(copies), "" if len(copies) == 1 else "s",
+                        shown, qty))
+        if any(name != ident for name in names):
+            lines.append("  note: the copies did not all carry the same ID - "
+                         "the programs are named after %s" % ident)
     for mark, part in setups:
         counts = {}
         for _mid, name, _p in part.macros:
@@ -1179,6 +1258,9 @@ qtys = SideInput(QTY)
 taken = {}
 n = 0
 
+# Read the whole input first: identical solids have to be found before any of
+# them is converted, so the shape is only put through the planner once.
+entries = []                        # (path, brep, ident, qty), in input order
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
         if brep is None:
@@ -1187,30 +1269,59 @@ for path, items in branches_of(B):
             given = ids.get(path, j, n)
             ident = (clean(given) if given is not None
                      else default_id(path, j, len(items)))
+        except Exception:
+            ident = "part-%d" % n
 
-            qty = qtys.get(path, j, n)
-            try:
-                qty = max(1, int(round(float(qty))))
-            except (TypeError, ValueError):
-                qty = 1
+        try:
+            qty = max(1, int(round(float(qtys.get(path, j, n)))))
+        except Exception:
+            qty = 1
 
-            setups = brep_to_setups(brep)
-            for mark, part in setups:
-                name = file_name(ident, part, mark, qty)
-                if name in taken:
-                    taken[name] += 1
-                    stem = name[:-len(EXT)] if EXT else name
-                    name = "%s(%d)%s" % (stem, taken[name], EXT)
-                    INFO.Add("WARNING: two pieces asked for the same file "
-                             "name - the second is now %s. Give them "
-                             "distinct IDs." % name, path)
-                else:
-                    taken[name] = 1
-                MPR.Add(render_mpr(part), path)
-                NAME.Add(name, path)
-            INFO.Add(describe(ident, qty, setups), path)
-        except Exception as exc:
-            MPR.Add(None, path)
-            NAME.Add(None, path)
-            INFO.Add("ERROR: %s" % exc, path)
+        entries.append((path, brep, ident, qty))
         n += 1
+
+# Group by shape, keeping the order the parts came in. The first solid of a
+# group is the one converted; the rest only add to its quantity.
+groups = []                         # lists of indices into entries
+first_seen = {}
+for i, entry in enumerate(entries):
+    key = None
+    if MERGE_IDENTICAL:
+        try:
+            key = geometry_key(entry[1])
+        except Exception:
+            key = None              # unreadable shape: leave it on its own
+    if key is not None and key in first_seen:
+        groups[first_seen[key]].append(i)
+        continue
+    if key is not None:
+        first_seen[key] = len(groups)
+    groups.append([i])
+
+for members in groups:
+    path, brep, ident, _qty = entries[members[0]]
+    copies = [entries[i] for i in members[1:]]
+    qty = sum(entries[i][3] for i in members)
+    try:
+        setups = brep_to_setups(brep)
+        for mark, part in setups:
+            name = file_name(ident, part, mark, qty)
+            if name in taken:
+                taken[name] += 1
+                stem = name[:-len(EXT)] if EXT else name
+                name = "%s(%d)%s" % (stem, taken[name], EXT)
+                INFO.Add("WARNING: two pieces asked for the same file "
+                         "name - the second is now %s. Give them "
+                         "distinct IDs." % name, path)
+            else:
+                taken[name] = 1
+            MPR.Add(render_mpr(part), path)
+            NAME.Add(name, path)
+        INFO.Add(describe(ident, qty, setups, copies), path)
+    except Exception as exc:
+        MPR.Add(None, path)
+        NAME.Add(None, path)
+        INFO.Add("ERROR: %s" % exc, path)
+    for cpath, _cbrep, cident, cqty in copies:
+        INFO.Add("%s   identical to %s - no program of its own, its x%s is in "
+                 "that one" % (cident, ident, cqty), cpath)

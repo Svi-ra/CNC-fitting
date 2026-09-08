@@ -65,7 +65,10 @@ array carries, which bit sits on each side for horizontal bores, and how the
 grooving saw runs. Sawn grooves are read off the solid alongside the bores. A
 part that cannot all be reached in one clamping comes out as two programs, one
 face up and one for the piece turned over, named `-F` and `-B`. Anything the
-machine still cannot reach is reported rather than quietly written. See
+machine still cannot reach is reported rather than quietly written.
+
+Panels of the same shape are converted once however many times they appear:
+the quantities are added up and the file is named for the total. See
 [Tools/README.md](Tools/README.md#grasshopper-component).
 
 ## Documentation

@@ -9,6 +9,56 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.5.0] — 2026-09-08
+
+`Tools/gh_brep2mpr.py` converts a repeated panel once. A nested sheet where
+the same part appears twenty times now gives one program named for the total
+quantity, instead of twenty identical files that differ only in their `_1`.
+
+### Added
+
+- **Identical solids are folded together.** The whole input is read before
+  anything is planned, solids of the same shape are grouped, and only the
+  first of each group goes through the planner and the MPR writer. Their
+  quantities are added up, so `file_name` writes the total and the existing
+  `<ID>_<length>x<width>-<F|B>_<quantity>.mpr` convention carries it with no
+  change of form.
+- `geometry_key` — the shape fingerprint the grouping runs on: bounding-box
+  size, every vertex, and every face with its type and, for a cylinder, its
+  radius and axis. Everything is measured from the corner of the part's own
+  bounding box and quantised to `DUP_TOL`, so where a solid sits in the model
+  does not matter. It touches no part of the converter, so a duplicate costs
+  a bounding box and a walk over the vertices rather than a conversion.
+- `MERGE_IDENTICAL` (on) and `DUP_TOL` (0.01 mm) join the settings block.
+  Off converts every solid separately, as before.
+- The report names what was folded in: the surviving `INFO` entry lists the
+  copies and says their quantities are in its own, and each copy's branch
+  gets a line naming the program that covers it. Where the copies carried
+  IDs of their own — the programs are named after the first — `INFO` says so.
+
+### Notes
+
+- **Orientation is deliberately not normalised.** A copy turned end for end
+  has its holes at the other end and is a genuinely different program, so it
+  is left alone. Only position is factored out.
+- `MPR` and `NAME` stay parallel to each other, but a merged copy's branch
+  now carries no program — that branch appears in `INFO` only.
+
+### Verification
+
+Not run in Grasshopper; the two new pieces were exercised against stub
+geometry outside Rhino, and the file compiles.
+
+- `geometry_key` matches a copy translated across the sheet, ignores the
+  order Rhino hands the vertices back in, and separates two panels that
+  differ only in one bore's radius or one vertex's position.
+- The grouping pass sums quantities (2 + 3 + 1 into one x6), keeps the input
+  order of the groups, and collapses to one group per solid with
+  `MERGE_IDENTICAL = False`.
+- Reading `ID` and `QTY` moved out of the per-part `try` when the loop was
+  split in two, and is now guarded on its own, so a bad value still falls
+  back to a default instead of stopping the component.
+
 ## [0.4.0] — 2026-09-07
 
 `Tools/gh_brep2mpr.py` reads grooves off the solid and writes them as

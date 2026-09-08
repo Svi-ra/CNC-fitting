@@ -253,14 +253,40 @@ panel to the shape of its own grooving — so the outline is taken from
 whichever of the two faces still goes round the plain rectangle, and only
 when neither does is a contour emitted at all.
 
+### Identical panels
+
+**Solids of the same shape are converted once.** A nested sheet where the same
+panel appears twenty times gives one program, not twenty, and the quantities
+add up: the file comes out named for the total. The copies are recognised
+before anything is planned, so a duplicate costs a bounding box and a walk
+over its vertices rather than a full conversion.
+
+Two solids count as the same shape when their vertices, and the radius and
+axis of every cylindrical face, measure the same from the corner of their own
+bounding boxes, within `DUP_TOL`. Position is therefore irrelevant — copies
+laid out across a sheet still fold together. **Orientation is deliberately
+not normalised:** a copy turned end for end carries its holes at the other end
+and is a genuinely different program, so it stays separate.
+
+```python
+MERGE_IDENTICAL = True  # off converts every solid separately, as before
+DUP_TOL = 0.01          # two solids count as the same shape within this, mm
+```
+
+The first solid of a group is the one converted, and its `ID` names the
+programs. `MPR` and `NAME` carry nothing for the copies; `INFO` gives each of
+them a line saying which program covers it, and the surviving report names the
+copies folded in — including a note if they did not all carry the same `ID`.
+
 ### File names
 
 ```
 <ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-F_4.mpr
 ```
 
-`F` = face up, as modelled. `B` = turned over. The quantity is whatever came
-in on `QTY` (1 if nothing did) and is the same on every program of one piece.
+`F` = face up, as modelled. `B` = turned over. The quantity is the sum of
+`QTY` over the identical solids folded into that program — 1 per solid if
+nothing came in on `QTY` — and is the same on every program of one piece.
 Two pieces asking for the same name is caught and reported rather than
 silently overwriting — give them distinct IDs. Change `EXT` for a different
 extension, or `""` for a bare name.
@@ -302,6 +328,8 @@ outline becomes a contour when it is not simply the bounding rectangle.
 | `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
 | `SAW_ALONG` | `"X"` | the directions the saw unit can run |
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
+| `MERGE_IDENTICAL` | on | convert one solid per shape and add the quantities up; off converts every solid separately |
+| `DUP_TOL` | 0.01 | how far two solids may differ and still count as the same shape |
 
 Which face ends up on top is **not** a setting: it is decided per part by the
 planner above, because it is a machining choice rather than a property of the
