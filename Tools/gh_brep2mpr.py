@@ -10,10 +10,13 @@ Component setup
     input   B      Brep     access = Tree   one part per branch
     input   ID     str      access = Tree   piece ID, optional
     input   QTY    int      access = Tree   how many of this piece, optional
+    input   DIR    bool     access = List   grain direction per part, optional
+    input   MAT    str      access = List   material per part, optional
     output  MPR    -                        one whole program per setup,
                                             line endings already embedded
     output  NAME   -                        the file name for each program
     output  INFO   -                        one report per part
+    output  TABLE  -                        the cut list, one line per piece
 
 MPR and NAME are parallel trees: item *i* of a branch is the program, item *i*
 of the same branch in NAME is what to call it. Write MPR out verbatim -- the
@@ -84,6 +87,37 @@ MERGE_IDENTICAL = False to convert every solid separately.
 The ID of the first solid of a group names the programs. Where the copies
 carried IDs of their own, INFO says so.
 
+Material and grain direction
+----------------------------
+DIR and MAT carry the per-part data the geometry does not. Each is a plain
+list as long as the list of parts, read in the order the parts arrive on B:
+
+    DIR   True -- the first dimension of the piece runs along the grain, as
+          modelled. False -- the piece is turned 90 deg across the grain, so
+          its two dimensions swap in the cut list.
+    MAT   interior, base, ... -- free text, carried through as given.
+
+Either may be left unwired: the pieces then all run along the grain, with no
+material named. A list of the wrong length is read as far as it goes -- the
+parts past its end fall back on those defaults -- and INFO says so.
+
+Both take part in the identical-panel test above: two solids of the same
+shape cut from different material, or with the grain the other way, are
+different pieces and each gets a program.
+
+The cut list
+------------
+TABLE is the cut list: a header line and then one line per piece.
+
+    Material;ID;Lungime;Latime;Cantitate
+    base;0;480;232;1
+
+ID is where the piece sits in the input, counting from zero. Identical solids
+folded into one program share the ID of the first of them, so the numbers
+have gaps wherever copies were folded in. Lungime is the dimension along the
+grain -- the long side of the panel unless DIR said otherwise -- and
+Cantitate is the same total the file name carries.
+
 File names
 ----------
     <ID>_<length>x<width>-<F|B>_<quantity>.mpr
@@ -115,6 +149,9 @@ EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 
 MERGE_IDENTICAL = True  # solids of the same shape share one program
 DUP_TOL = 0.01          # two solids count as the same shape within this, mm
+
+TABLE_SEP = ";"
+TABLE_HEADER = ("Material", "ID", "Lungime", "Latime", "Cantitate")
 
 # ---------------------------------------------------------------------------
 # the machine
@@ -1145,17 +1182,47 @@ def geometry_key(brep):
 # naming and reporting
 # ---------------------------------------------------------------------------
 
+def panel_size(brep):
+    """Length and width the way the converter would place the piece.
+
+    Only needed for a solid the converter threw out: the cut list still wants
+    a line for it, and the bounding box is all that can be had.
+    """
+    box = brep.GetBoundingBox(True)
+    lx, ly = box.Max.X - box.Min.X, box.Max.Y - box.Min.Y
+    if LONG_X and lx < ly:
+        lx, ly = ly, lx
+    return lx, ly
+
+
+def table_row(material, number, lx, ly, along_grain, qty):
+    """One cut list line.
+
+    Lungime is the dimension along the grain, so the two sizes swap for a
+    piece laid across it -- the same swap as turning the panel 90 deg.
+    """
+    lungime, latime = (lx, ly) if along_grain else (ly, lx)
+    return TABLE_SEP.join([material, str(number), fnum(lungime),
+                           fnum(latime), str(qty)])
+
+
 def file_name(ident, part, mark, qty):
     """<ID>_<length>x<width>-<F|B>_<quantity>.mpr"""
     return "%s_%sx%s-%s_%s%s" % (ident, fnum(part.lx), fnum(part.ly),
                                  mark, qty, EXT)
 
 
-def describe(ident, qty, setups, copies=()):
+def describe(ident, qty, setups, copies=(), material="", along_grain=True):
     _mark, first = setups[0]
     lines = ["%s   %s x %s x %s mm   x%s   %d file%s"
              % (ident, fnum(first.lx), fnum(first.ly), fnum(first.lz), qty,
                 len(setups), "" if len(setups) == 1 else "s")]
+    if material or not along_grain:
+        lines.append("  %s%s"
+                     % (material or "no material given",
+                        "" if along_grain else
+                        " - turned across the grain, so the cut list reads "
+                        "%s x %s" % (fnum(first.ly), fnum(first.lx))))
     if copies:
         names = [c[2] for c in copies]
         shown = ", ".join(names[:8]) + (", ..." if len(names) > 8 else "")
@@ -1221,6 +1288,40 @@ class SideInput(object):
         return None
 
 
+def column(values):
+    """A per-part input flattened to one value per part, in input order.
+
+    DIR and MAT are plain lists running parallel to the parts, so unlike ID
+    and QTY there is nothing to match up by branch: whatever comes in is read
+    straight through in order.
+    """
+    out = []
+    for _path, items in branches_of(values):
+        out.extend(items)
+    return out
+
+
+def at(values, n, default):
+    """Item *n* of a per-part list, or the default past its end."""
+    if n < len(values) and values[n] is not None:
+        return values[n]
+    return default
+
+
+def as_bool(value, default=True):
+    """A Grasshopper boolean may arrive as a bool, a number or a string."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in ("true", "1", "1.0", "yes", "y", "t"):
+        return True
+    if text in ("false", "0", "0.0", "no", "n", "f"):
+        return False
+    return default
+
+
 def clean(text):
     """Keep a piece ID usable as a file name."""
     out = []
@@ -1235,7 +1336,7 @@ def default_id(path, j, count):
     return "%s-%d" % (base, j) if count > 1 else base
 
 
-# ID and QTY are optional: the component still runs with only B wired.
+# Everything but B is optional: the component still runs with only B wired.
 try:
     ID
 except NameError:
@@ -1244,10 +1345,20 @@ try:
     QTY
 except NameError:
     QTY = None
+try:
+    DIR
+except NameError:
+    DIR = None
+try:
+    MAT
+except NameError:
+    MAT = None
 
 MPR = DataTree[object]()
 NAME = DataTree[object]()
 INFO = DataTree[object]()
+TABLE = DataTree[object]()
+TABLE.Add(TABLE_SEP.join(TABLE_HEADER), GH_Path(0))
 
 if UNITS is not None and UNITS != Rhino.UnitSystem.Millimeters:
     INFO.Add("WARNING: the document is not in millimetres (%s). woodWOP "
@@ -1255,12 +1366,15 @@ if UNITS is not None and UNITS != Rhino.UnitSystem.Millimeters:
 
 ids = SideInput(ID)
 qtys = SideInput(QTY)
+directions = column(DIR)
+materials = column(MAT)
 taken = {}
 n = 0
 
 # Read the whole input first: identical solids have to be found before any of
 # them is converted, so the shape is only put through the planner once.
-entries = []                        # (path, brep, ident, qty), in input order
+# (path, brep, ident, qty, material, along_grain), in input order
+entries = []
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
         if brep is None:
@@ -1277,8 +1391,22 @@ for path, items in branches_of(B):
         except Exception:
             qty = 1
 
-        entries.append((path, brep, ident, qty))
+        material = str(at(materials, n, "")).strip()
+        along_grain = as_bool(at(directions, n, True), True)
+
+        entries.append((path, brep, ident, qty, material, along_grain))
         n += 1
+
+# DIR and MAT run part for part with B. A list of another length still works
+# -- the parts past its end are along the grain with no material -- but it is
+# almost always a wiring mistake, so it is said out loud.
+for label, values in (("DIR", directions), ("MAT", materials)):
+    if values and len(values) != n:
+        INFO.Add("WARNING: %d part%s but %d value%s on %s - %s takes one "
+                 "value per part, in the same order"
+                 % (n, "" if n == 1 else "s", len(values),
+                    "" if len(values) == 1 else "s", label, label),
+                 GH_Path(0))
 
 # Group by shape, keeping the order the parts came in. The first solid of a
 # group is the one converted; the rest only add to its quantity.
@@ -1288,7 +1416,10 @@ for i, entry in enumerate(entries):
     key = None
     if MERGE_IDENTICAL:
         try:
-            key = geometry_key(entry[1])
+            # Material and grain are part of what makes two pieces the same:
+            # the very same shape cut from another board, or turned across
+            # the grain, is a piece of its own however well the solids match.
+            key = (geometry_key(entry[1]), entry[4], entry[5])
         except Exception:
             key = None              # unreadable shape: leave it on its own
     if key is not None and key in first_seen:
@@ -1299,9 +1430,10 @@ for i, entry in enumerate(entries):
     groups.append([i])
 
 for members in groups:
-    path, brep, ident, _qty = entries[members[0]]
+    path, brep, ident, _qty, material, along_grain = entries[members[0]]
     copies = [entries[i] for i in members[1:]]
     qty = sum(entries[i][3] for i in members)
+    number = members[0]             # where the piece sits in the input
     try:
         setups = brep_to_setups(brep)
         for mark, part in setups:
@@ -1317,11 +1449,23 @@ for members in groups:
                 taken[name] = 1
             MPR.Add(render_mpr(part), path)
             NAME.Add(name, path)
-        INFO.Add(describe(ident, qty, setups, copies), path)
+        INFO.Add(describe(ident, qty, setups, copies, material, along_grain),
+                 path)
+        first = setups[0][1]
+        TABLE.Add(table_row(material, number, first.lx, first.ly,
+                            along_grain, qty), GH_Path(0))
     except Exception as exc:
         MPR.Add(None, path)
         NAME.Add(None, path)
         INFO.Add("ERROR: %s" % exc, path)
-    for cpath, _cbrep, cident, cqty in copies:
+        # No program, but the piece was still ordered: keep it in the cut
+        # list, sized from its bounding box.
+        try:
+            lx, ly = panel_size(brep)
+            TABLE.Add(table_row(material, number, lx, ly, along_grain, qty),
+                      GH_Path(0))
+        except Exception:
+            pass
+    for cpath, _cbrep, cident, cqty, _cmat, _cdir in copies:
         INFO.Add("%s   identical to %s - no program of its own, its x%s is in "
                  "that one" % (cident, ident, cqty), cpath)

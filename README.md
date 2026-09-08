@@ -68,8 +68,11 @@ face up and one for the piece turned over, named `-F` and `-B`. Anything the
 machine still cannot reach is reported rather than quietly written.
 
 Panels of the same shape are converted once however many times they appear:
-the quantities are added up and the file is named for the total. See
-[Tools/README.md](Tools/README.md#grasshopper-component).
+the quantities are added up and the file is named for the total. Material and
+grain direction come in beside the geometry — panels of the same shape cut
+from different board, or laid across the grain, stay separate pieces — and the
+component also returns the cut list, `Material;ID;Lungime;Latime;Cantitate`.
+See [Tools/README.md](Tools/README.md#grasshopper-component).
 
 ## Documentation
 

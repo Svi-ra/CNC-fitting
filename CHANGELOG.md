@@ -9,6 +9,43 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.6.0] — 2026-09-08
+
+`Tools/gh_brep2mpr.py` takes the material and the grain direction beside the
+geometry, and returns the cut list along with the programs.
+
+### Added
+
+- **Two per-part inputs, `DIR` and `MAT`.** Plain lists as long as the list of
+  parts, read straight through in the order the parts arrive on `B` — unlike
+  `ID` and `QTY` there is nothing to match up by branch. `DIR` is the grain
+  direction (`True`: the first dimension runs along the grain; `False`: the
+  piece is laid 90° across it), taken as a boolean, a number or `"true"` /
+  `"false"` as text; `MAT` is free text carried through as given. Either may
+  be left unwired — all along the grain, no material named — and a list of
+  the wrong length is read as far as it goes and reported in `INFO`.
+- **`TABLE`, the cut list**: a header line and then one line per piece,
+  `Material;ID;Lungime;Latime;Cantitate`. `ID` is where the piece sits in the
+  geometry input, counting from zero, so folded-in copies share the number of
+  the first of them; `Lungime` is the dimension along the grain and
+  `Cantitate` the same total the file name carries. A part the converter
+  throws out still gets a line, sized from its bounding box.
+- `column` / `at` read a per-part list, `as_bool` accepts the three shapes a
+  Grasshopper boolean arrives in, `table_row` writes one cut-list line and
+  `panel_size` sizes a part the planner refused.
+
+### Changed
+
+- **Material and grain join the identical-panel test.** The grouping key is
+  now the shape fingerprint together with the material and the direction, so
+  the very same solid cut from another board, or laid across the grain, is a
+  piece of its own and gets a program of its own.
+- `INFO` names the material, and says when a piece is turned across the grain
+  and what the cut list therefore reads.
+- `DIR` changes the cut list only, never the program — the machine has no
+  notion of grain, so the two sizes swap on the sheet while every hole stays
+  where the model put it.
+
 ## [0.5.0] — 2026-09-08
 
 `Tools/gh_brep2mpr.py` converts a repeated panel once. A nested sheet where

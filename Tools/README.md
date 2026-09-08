@@ -126,17 +126,24 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `B` | Brep | **Tree** | one part per branch |
 | input | `ID` | str | **Tree** | piece ID — optional |
 | input | `QTY` | int | **Tree** | how many of this piece — optional |
+| input | `DIR` | bool | **List** | grain direction per part — optional |
+| input | `MAT` | str | **List** | material per part — optional |
 | output | `MPR` | — | | one whole program per setup, line endings embedded |
 | output | `NAME` | — | | the file name for each program |
 | output | `INFO` | — | | one report per part |
+| output | `TABLE` | — | | the cut list, one line per piece |
 
 `MPR` and `NAME` are parallel trees: item *i* of a branch is the program, item
 *i* of the same branch in `NAME` is what to call it. The component runs with
-only `B` wired; `ID` and `QTY` may be left off.
+only `B` wired; everything else may be left off.
 
 `ID` and `QTY` can each be wired either branch-for-branch with `B`, or as one
 flat list in part order. With no `ID` the branch path is used, so a flat list
 of parts gives `0`, `1`, `2` …
+
+`DIR` and `MAT` are different: they are plain lists as long as the list of
+parts, read straight through in the order the parts arrive on `B`. See
+[Material, grain and the cut list](#material-grain-and-the-cut-list).
 
 ### What the machine can reach
 
@@ -263,7 +270,9 @@ over its vertices rather than a full conversion.
 
 Two solids count as the same shape when their vertices, and the radius and
 axis of every cylindrical face, measure the same from the corner of their own
-bounding boxes, within `DUP_TOL`. Position is therefore irrelevant — copies
+bounding boxes, within `DUP_TOL`, **and** they carry the same material and the
+same grain direction — the very same shape cut from another board, or laid
+across the grain, is a piece of its own however well the solids match. Position is therefore irrelevant — copies
 laid out across a sheet still fold together. **Orientation is deliberately
 not normalised:** a copy turned end for end carries its holes at the other end
 and is a genuinely different program, so it stays separate.
@@ -277,6 +286,42 @@ The first solid of a group is the one converted, and its `ID` names the
 programs. `MPR` and `NAME` carry nothing for the copies; `INFO` gives each of
 them a line saying which program covers it, and the surviving report names the
 copies folded in — including a note if they did not all carry the same `ID`.
+
+### Material, grain and the cut list
+
+`DIR` and `MAT` carry the per-part data the geometry does not. Each is a plain
+list as long as the list of parts, read in the order the parts arrive on `B`:
+
+| Input | Meaning |
+| --- | --- |
+| `DIR` | `True` — the first dimension runs along the grain, as modelled. `False` — the piece is laid 90° across the grain, so its two dimensions swap in the cut list. |
+| `MAT` | `interior`, `base`, … — free text, carried through as given. |
+
+Either may be left unwired: the pieces then all run along the grain, with no
+material named. A list of the wrong length is read as far as it goes — the
+parts past its end fall back on those defaults — and `INFO` says so, because
+it is nearly always a wiring mistake. `DIR` takes a real boolean, a number, or
+`"true"` / `"false"` as text.
+
+Both feed the identical-panel test above, and both feed `TABLE`, the cut list:
+a header line and then one line per piece.
+
+```
+Material;ID;Lungime;Latime;Cantitate
+base;0;480;232;1
+```
+
+`ID` is where the piece sits in the input, counting from zero; solids folded
+into one program share the `ID` of the first of them, so the numbers have gaps
+wherever copies were merged. It is the position in the geometry list, not the
+`ID` input that names the files. `Lungime` is the dimension along the grain —
+the long side of the panel unless `DIR` said otherwise — and `Cantitate` is
+the same total the file name carries. A part the converter throws out still
+gets a line, sized from its bounding box, so nothing drops out of the list.
+
+`DIR` changes the cut list only, never the program: the machine has no notion
+of grain, so the sizes swap on the sheet while the holes stay exactly where
+the model put them.
 
 ### File names
 
