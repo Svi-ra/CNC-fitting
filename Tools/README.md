@@ -397,6 +397,109 @@ slider drag will write the whole batch.
 The component assumes the Rhino document is in millimetres and puts a warning
 in `INFO` if it is not.
 
+## Labels
+
+`gh_name2zpl.py` turns the panel names into Code 128 labels and writes them as
+one ZPL file, ready to go to the printer. It is a second **Rhino 8 Script
+component set to Python 3**, wired downstream of the one above — `NAME` off
+`gh_brep2mpr` is exactly what it wants:
+
+| | Name | Type | Access | |
+| --- | --- | --- | --- | --- |
+| input | `NAME` | str | **Tree** | one panel name per label |
+| input | `QTY` | int | **Tree** | copies of each label — optional |
+| input | `PATH` | str | Item | where to write the `.zpl` — optional |
+| input | `WRITE` | bool | Item | write it — optional |
+| output | `ZPL` | — | | the whole file, one string, line endings embedded |
+| output | `LABEL` | — | | the same labels one by one, on `NAME`'s paths |
+| output | `FILE` | — | | the file written, if it was |
+| output | `INFO` | — | | the report |
+
+Each label is a complete `^XA … ^XZ` format: the name centred on top, the
+Code 128 of the same name below it.
+
+```
++--------------------------+
+|      0_600x400-F_4       |
+|                          |
+|     || ||| | || |||      |
++--------------------------+
+```
+
+Nothing is encoded by hand — the barcode is `^BC` in auto mode, so the
+subsets, the check digit and the quiet zones are the printer's business. What
+the component does is lay the label out, keep the data printable, and size the
+bars to the stock. `QTY` becomes `^PQ`, which the printer repeats itself, so a
+piece needing four labels is four labels and one format.
+
+Standard library only, and only `io` and `os`, and only when a file is
+written. `WRITE` is the same gate as everywhere here: with `PATH` wired and
+`WRITE` off, `INFO` says what *would* be written and nothing is.
+
+### Stock and dots
+
+Everything is in millimetres in a settings block at the top of the file, and
+turned into printer dots against `DPI`. The defaults are a 203 dpi printer on
+70 × 40 mm stock:
+
+```python
+DPI = 203                   # 203, 300 or 600
+LABEL_W_MM = 70.0
+LABEL_H_MM = 40.0
+MARGIN_MM = 3.0
+TITLE_MM = 4.0              # cap height of the name
+TITLE_LINES = 2             # how many lines a long name may wrap over
+BAR_H_MM = 15.0
+HUMAN_READABLE = False      # the printer's own line under the bars as well
+MODULE_MAX, MODULE_MIN = 4, 2
+```
+
+Set `DPI` to what the printer actually is. A file written for 203 dpi sent to
+a 300 dpi printer comes out two thirds the size, and nothing anywhere reports
+it — the dots are simply smaller.
+
+The bars are drawn with the widest module from `MODULE_MAX` down to
+`MODULE_MIN` that still fits between the margins, and centred on that width.
+Below 2 dots at 203 dpi a handheld starts to miss, so the component will not
+go thinner: a name too long to fit is still written out, and `INFO` says which
+one and by how many dots it would be clipped. On the default stock that is
+about 20 characters at the 2-dot module — roughly what
+`<ID>_<length>x<width>-<F|B>_<qty>.mpr` comes to, which is why the default is
+70 mm wide.
+
+### What can be in a name
+
+Code 128 carries printable ASCII. An accented letter — `Ușă` — has no barcode,
+so the label is left out rather than printed wrong, and `INFO` names it and
+the characters that did it. `^` and `~` are ZPL's own control characters and
+`\` starts an escape of `^FB`'s; all three are written as hex under `^FH`
+(`_5E`, `_7E`, `_5C`, and `_5F` for `_` itself) and come back off the scanner
+as themselves.
+
+The centred name field ends with `\&`, ZPL's line separator. `^FB` only
+centres lines it has been told are finished, so without it a one-line name
+sits at the left margin — which is what a ZPL validator means by *"field
+block is centered but does not end with a line separator"*.
+
+The same name twice is printed twice and reported: two pieces under one name
+cannot be told apart at the stack. `QTY` is how one piece gets several labels.
+
+### Sending it
+
+The file is plain ZPL. It goes to the printer as bytes — no driver, no page
+setup:
+
+```bash
+copy /b labels.zpl \server\zebra
+```
+
+```bash
+lpr -S 192.168.1.50 -P raw labels.zpl
+```
+
+To see a label before there is a printer, paste `ZPL` into a ZPL viewer
+(labelary.com renders it and reports what is wrong with it).
+
 ## Limits — read this before the first cut
 
 * **The output has not been run on a machine.** It matches the MPR 4.x

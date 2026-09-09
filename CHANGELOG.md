@@ -9,6 +9,43 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.7.0] — 2026-09-09
+
+`Tools/gh_name2zpl.py`, a new Grasshopper component: the panel names become
+Code 128 labels and one ZPL file that goes straight to the printer.
+
+### Added
+
+- **`gh_name2zpl.py`.** `NAME` in — the same tree `gh_brep2mpr.py` hands out —
+  and `ZPL` out, one string holding a complete `^XA … ^XZ` format per label,
+  line endings embedded. `LABEL` is the same labels one by one on `NAME`'s
+  paths, for printing only some of them; `PATH` and `WRITE` write the file,
+  the same boolean gate the other components use. Standard library only, and
+  only `io` and `os`, and only when a file is written.
+- **The barcode is the printer's.** `^BC` in auto mode, so subsets, check
+  digit and quiet zones are its business and nothing is encoded here by hand.
+  The component lays the label out: the name centred on top over the Code 128
+  of the same name, everything in millimetres in a settings block and turned
+  into dots against `DPI`.
+- **The bars are sized to the stock.** The widest module from `MODULE_MAX`
+  down to `MODULE_MIN` that fits between the margins, centred on that width.
+  It will not go below 2 dots, where a handheld starts to miss: a name too
+  long is still written out and `INFO` says by how many dots it would be
+  clipped, which on the default 70 × 40 mm stock is about 20 characters —
+  roughly what `<ID>_<length>x<width>-<F|B>_<qty>.mpr` comes to.
+- **`QTY` becomes `^PQ`**, so a piece needing four labels is four labels and
+  one format, repeated by the printer itself.
+- **What a name may hold.** Code 128 carries printable ASCII, so a name with
+  an accented letter gets no label rather than a wrong one, and `INFO` names
+  the characters that did it. `^`, `~` and `\` are ZPL's own controls and are
+  written as hex under `^FH`, `_` with them, so they come back off the scanner
+  as themselves. The same name twice is printed twice and reported: two pieces
+  under one name cannot be told apart at the stack.
+- The centred name field ends with `\&`. `^FB` centres only lines it has been
+  told are finished, so without the separator a one-line name sits at the left
+  margin instead — which is what a ZPL validator reports as *"field block is
+  centered but does not end with a line separator"*.
+
 ## [0.6.0] — 2026-09-08
 
 `Tools/gh_brep2mpr.py` takes the material and the grain direction beside the

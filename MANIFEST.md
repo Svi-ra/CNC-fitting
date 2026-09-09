@@ -2,8 +2,9 @@
 
 Working set for getting furniture parts from CAD onto a HOMAG/WEEKE CNC in
 woodWOP MPR format. It holds the two format references, a set of real and test
-CAD/CAM files, and a converter that turns DXF solids directly into MPR
-programs.
+CAD/CAM files, a converter that turns DXF solids directly into MPR programs,
+and the Grasshopper components that do the same from Rhino and label the
+finished pieces.
 
 - **Root:** `D:\CNC-fitting`
 - **Machine format:** woodWOP MPR 4.x (HOMAG/WEEKE), millimetres
@@ -25,7 +26,7 @@ CNC-fitting/
 │  ├─ Model-associated/       one part in every woodWOP-related format
 │  ├─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
 │  └─ WoodWop_export/         woodWOP's own program for the meshed part
-└─ Tools/                     the converters, the checker, the GH component
+└─ Tools/                     the converters, the checker, the GH components
 ```
 
 ## Docs — format references
@@ -125,6 +126,7 @@ the Ø8 blind holes are dowels).
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, groove width and run, contour references. |
 | `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over — when one clamping cannot reach everything. Solids of the same shape, material and grain are converted once, their quantities added up into the file name; a cut list comes out beside the programs. |
+| `Tools/gh_name2zpl.py` | Grasshopper Script component (Rhino 8, Python 3): panel names in, a ZPL file of Code 128 labels out, ready to send to the printer as bytes. Wired downstream of `gh_brep2mpr.py`'s `NAME`. Barcodes are `^BC`, the printer's own Code 128; the component lays the label out, sizes the bars to the stock and reports a name that will not fit or cannot be encoded. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
 
@@ -153,6 +155,9 @@ Grasshopper (.gh)
       │
       ├─ Tools/gh_brep2mpr.py ────────────────────► MPR text + names
       │     (Brep straight to MPR, no export at all)        │
+      │            │                                        │
+      │            └─ Tools/gh_name2zpl.py ──► ZPL ──► label printer
+      │                 (the same names, as Code 128)       │
       │                                                     │
       │  Pancake export                                     │
       ▼                                                     │
