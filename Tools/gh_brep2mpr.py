@@ -84,8 +84,11 @@ the model they sit. Orientation is deliberately not normalised: a copy turned
 end for end has its holes at the other end and is a different program. Set
 MERGE_IDENTICAL = False to convert every solid separately.
 
-The ID of the first solid of a group names the programs. Where the copies
-carried IDs of their own, INFO says so.
+Folding copies in does not eat any numbers: the programs are numbered by
+program, 0, 1, 2 ... in the order the pieces come in, so the numbering runs
+on without gaps however many solids were folded together. A piece with an ID
+of its own on ID keeps it -- the ID of the first solid of a group names the
+programs, and where the copies carried IDs of their own, INFO says so.
 
 Material and grain direction
 ----------------------------
@@ -112,9 +115,9 @@ TABLE is the cut list: a header line and then one line per piece.
     Material;ID;Lungime;Latime;Cantitate
     base;0;480;232;1
 
-ID is where the piece sits in the input, counting from zero. Identical solids
-folded into one program share the ID of the first of them, so the numbers
-have gaps wherever copies were folded in. Lungime is the dimension along the
+ID is which program the line is for, counting from zero, and matches the one
+on the file name. Identical solids folded into one program share that one
+number, and the numbering has no gaps. Lungime is the dimension along the
 grain -- the long side of the panel unless DIR said otherwise -- and
 Cantitate is the same total the file name carries.
 
@@ -125,7 +128,7 @@ File names
 `F` = face up, as modelled. `B` = turned over. The quantity is the sum of QTY
 over the identical solids folded into this program (1 per solid if nothing
 came in on QTY), and is the same on every program of one piece. With no ID
-input the branch path is used, so a flat list gives 0, 1, 2 ...
+input the programs are simply numbered 0, 1, 2 ... in order.
 """
 
 import math
@@ -1212,6 +1215,16 @@ def file_name(ident, part, mark, qty):
                                  mark, qty, EXT)
 
 
+def copy_label(entry):
+    """How a folded-in copy is named in INFO.
+
+    A copy that carried an ID of its own is called by it. One that did not
+    has no number any more -- the numbers now count programs, not solids --
+    so it is called by where it sat in the input instead.
+    """
+    return entry[2] if entry[6] else "input %s" % entry[2]
+
+
 def describe(ident, qty, setups, copies=(), material="", along_grain=True):
     _mark, first = setups[0]
     lines = ["%s   %s x %s x %s mm   x%s   %d file%s"
@@ -1224,13 +1237,14 @@ def describe(ident, qty, setups, copies=(), material="", along_grain=True):
                         " - turned across the grain, so the cut list reads "
                         "%s x %s" % (fnum(first.ly), fnum(first.lx))))
     if copies:
-        names = [c[2] for c in copies]
+        names = [copy_label(c) for c in copies]
         shown = ", ".join(names[:8]) + (", ..." if len(names) > 8 else "")
         lines.append("  %d identical solid%s folded in (%s) - converted once, "
                      "their quantities are in the x%s above"
                      % (len(copies), "" if len(copies) == 1 else "s",
                         shown, qty))
-        if any(name != ident for name in names):
+        given = [c[2] for c in copies if c[6]]
+        if any(name != ident for name in given):
             lines.append("  note: the copies did not all carry the same ID - "
                          "the programs are named after %s" % ident)
     for mark, part in setups:
@@ -1331,7 +1345,11 @@ def clean(text):
 
 
 def default_id(path, j, count):
-    """No ID wired: fall back on the branch path, so a flat list gives 0,1,2."""
+    """No ID wired: where the solid sat in the input, by branch path.
+
+    Only used to point at a solid in INFO -- the programs themselves are
+    numbered in order as they are written.
+    """
     base = str(path).strip("{}").replace(";", "-").strip()
     return "%s-%d" % (base, j) if count > 1 else base
 
@@ -1381,9 +1399,11 @@ for path, items in branches_of(B):
             continue
         try:
             given = ids.get(path, j, n)
-            ident = (clean(given) if given is not None
+            explicit = given is not None
+            ident = (clean(given) if explicit
                      else default_id(path, j, len(items)))
         except Exception:
+            explicit = False
             ident = "part-%d" % n
 
         try:
@@ -1394,7 +1414,8 @@ for path, items in branches_of(B):
         material = str(at(materials, n, "")).strip()
         along_grain = as_bool(at(directions, n, True), True)
 
-        entries.append((path, brep, ident, qty, material, along_grain))
+        entries.append((path, brep, ident, qty, material, along_grain,
+                        explicit))
         n += 1
 
 # DIR and MAT run part for part with B. A list of another length still works
@@ -1429,11 +1450,18 @@ for i, entry in enumerate(entries):
         first_seen[key] = len(groups)
     groups.append([i])
 
-for members in groups:
-    path, brep, ident, _qty, material, along_grain = entries[members[0]]
+# Folding copies in must not eat the numbers of the pieces after them, so the
+# programs are numbered by group: one number per program, 0, 1, 2 ... with no
+# gaps. An ID wired on ID is the piece's own and is left alone.
+for g, members in enumerate(groups):
+    entry = entries[members[0]]
+    path, brep, ident = entry[0], entry[1], entry[2]
+    material, along_grain, explicit = entry[4], entry[5], entry[6]
     copies = [entries[i] for i in members[1:]]
     qty = sum(entries[i][3] for i in members)
-    number = members[0]             # where the piece sits in the input
+    number = g                      # which program this is, counting from zero
+    if not explicit:
+        ident = str(number)
     try:
         setups = brep_to_setups(brep)
         for mark, part in setups:
@@ -1466,6 +1494,7 @@ for members in groups:
                       GH_Path(0))
         except Exception:
             pass
-    for cpath, _cbrep, cident, cqty, _cmat, _cdir in copies:
+    for copy in copies:
+        cpath, cqty = copy[0], copy[3]
         INFO.Add("%s   identical to %s - no program of its own, its x%s is in "
-                 "that one" % (cident, ident, cqty), cpath)
+                 "that one" % (copy_label(copy), ident, cqty), cpath)

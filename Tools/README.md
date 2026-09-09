@@ -138,8 +138,9 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 only `B` wired; everything else may be left off.
 
 `ID` and `QTY` can each be wired either branch-for-branch with `B`, or as one
-flat list in part order. With no `ID` the branch path is used, so a flat list
-of parts gives `0`, `1`, `2` …
+flat list in part order. With no `ID` the programs are simply numbered in the
+order they are written — `0`, `1`, `2` … — with no gaps, however many solids
+were folded together.
 
 `DIR` and `MAT` are different: they are plain lists as long as the list of
 parts, read straight through in the order the parts arrive on `B`. See
@@ -283,9 +284,16 @@ DUP_TOL = 0.01          # two solids count as the same shape within this, mm
 ```
 
 The first solid of a group is the one converted, and its `ID` names the
-programs. `MPR` and `NAME` carry nothing for the copies; `INFO` gives each of
-them a line saying which program covers it, and the surviving report names the
-copies folded in — including a note if they did not all carry the same `ID`.
+programs. **Folding copies in eats no numbers:** where the numbering is left
+to the component it counts programs, not solids, so a group of four still
+advances the count by one and the piece after it takes the next number. A
+piece with an `ID` of its own keeps it untouched.
+
+`MPR` and `NAME` carry nothing for the copies; `INFO` gives each of them a
+line saying which program covers it, and the surviving report names the copies
+folded in — including a note if they did not all carry the same `ID`. A copy
+that had no `ID` of its own has no number any more, so `INFO` points at it by
+where it sat in the input instead.
 
 ### Material, grain and the cut list
 
@@ -311,10 +319,10 @@ Material;ID;Lungime;Latime;Cantitate
 base;0;480;232;1
 ```
 
-`ID` is where the piece sits in the input, counting from zero; solids folded
-into one program share the `ID` of the first of them, so the numbers have gaps
-wherever copies were merged. It is the position in the geometry list, not the
-`ID` input that names the files. `Lungime` is the dimension along the grain —
+`ID` is which program the line is for, counting from zero, and is the same
+number the file name carries. Solids folded into one program share that one
+number, and the numbering runs on without gaps. `Lungime` is the dimension
+along the grain —
 the long side of the panel unless `DIR` said otherwise — and `Cantitate` is
 the same total the file name carries. A part the converter throws out still
 gets a line, sized from its bounding box, so nothing drops out of the list.
