@@ -35,6 +35,7 @@ reported in INFO rather than corrected.
     - the long side of the part is turned to X (LONG_X)
     - cylindrical faces become drillings, classified by where they break out:
         along Z, open at the top      -> <102 \BohrVert\
+          (under PUNCH_DEPTH deep and dead-end: a mark, BM="CP" Center punch)
         along X or Y, open at an edge -> <103 \BohrHoriz\
         any other angle               -> <104 \BohrUniv\
     - a flat rectangular cavity floor between the two faces becomes a sawn
@@ -144,6 +145,9 @@ from Grasshopper.Kernel.Data import GH_Path
 SNAP = 0.0          # round drill diameters to this step (0 = leave exact)
 MAX_DIA = 60.0      # larger round openings are not treated as drillings
 BM_VERT = "LS"      # drill mode for vertical bores: LS SS LSL SSS
+BM_PUNCH = "CP"     # woodWOP's "Center punch" mode, for marking holes
+PUNCH_DEPTH = 1.0   # dead-end vertical bores shallower than this, mm, are
+                    # punched with BM_PUNCH rather than drilled (0 = never)
 THICKNESS = None    # force a thickness in mm, or None to measure it
 LONG_X = True       # turn the part so its long side runs along X
 CONTOUR = True      # emit a contour when the outline is not a rectangle
@@ -169,7 +173,7 @@ TABLE_HEADER = ("Material", "ID", "Lungime", "Latime", "Cantitate")
 # far side comes off the through list, the rest off the dead-end list.
 
 MACHINE = {
-    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 5.0),   # dead-end, from above
+    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 7.0, 5.0),  # dead-end, from above
     "vert_thru": (7.0, 5.0),                            # right through
     "YM": (8.0,),                # top edge,   Y = BR, drills towards -Y
     "YP": (4.5,),                # lower edge, Y = 0,  drills towards +Y
@@ -197,7 +201,8 @@ GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 # woodWOP does not program a groove down its middle: XA/YA..XE/YE is one
 # EDGE of the groove and RK offsets the blade a full NB to one side. Checked
 # against a woodWOP 9.0.152 export of a known part --
-# Examples/WoodWop_export/0_472x420-F_1.mpr against Examples/Meshes/472x420.gltf
+# Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr against
+# Examples/Meshes/472x420.gltf
 # -- where a groove occupying Y 410..414 and running towards +X is written
 # XA="75" YA="410" XE="_BSX" YE="410" RK="WRKR". So with RK="WRKR" the groove
 # lies on the +Y side of a run towards +X; "WRKL" is the other side, and the
@@ -582,18 +587,31 @@ def read_brep(brep, notes):
 
 
 def _merge(cylinders):
-    """Fold the half-cylinder patches of one bore back into a single hole."""
+    """Fold the half-cylinder patches of one bore back into a single hole.
+
+    Only patches that overlap or touch along the axis are one bore. Two bores
+    on the same axis with material between them -- marks punched from both
+    faces -- stay two holes rather than joining into one through the part.
+    """
     groups = {}
     for axis, base, radius, tmin, tmax in cylinders:
         key = (tuple(round(c, 3) for c in axis),
                tuple(round(c, 3) for c in base),
                round(radius, 3))
-        if key in groups:
-            a, b, r, lo, hi = groups[key]
-            groups[key] = (a, b, r, min(lo, tmin), max(hi, tmax))
-        else:
-            groups[key] = (axis, base, radius, tmin, tmax)
-    return list(groups.values())
+        groups.setdefault(key, []).append((axis, base, radius, tmin, tmax))
+
+    merged = []
+    for patches in groups.values():
+        patches.sort(key=lambda c: c[3])
+        run = list(patches[0])
+        for axis, base, radius, tmin, tmax in patches[1:]:
+            if tmin <= run[4] + GEO_TOL:
+                run[4] = max(run[4], tmax)
+            else:
+                merged.append(tuple(run))
+                run = [axis, base, radius, tmin, tmax]
+        merged.append(tuple(run))
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -866,11 +884,15 @@ def reachable(feat, dia):
 def macro(feat, dia, lz):
     """The MPR macro for a bore, or None if there is nothing to write."""
     if feat["t"] == "vert":
+        # TI is the depth as modelled, whether the bit is flat or pointed.
         depth = lz if feat["thru"] else lz - feat["zlo"]
+        # A mark too shallow to be a hole is punched: woodWOP writes it as
+        # the same bore with BM="CP" and lets the cycle allow for the tip.
+        punch = not feat["thru"] and depth < PUNCH_DEPTH - GEO_TOL
         return (102, "BohrVert", [
             ("XA", fnum(feat["x"])), ("YA", fnum(feat["y"])),
             ("TI", fnum(depth)), ("DU", fnum(dia)),
-            ("BM", BM_VERT), ("S_", "2"),
+            ("BM", BM_PUNCH if punch else BM_VERT), ("S_", "2"),
             ("AN", "1"), ("AB", "0"), ("WI", "0")])
 
     if feat["t"] == "horiz":

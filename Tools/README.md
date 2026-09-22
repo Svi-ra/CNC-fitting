@@ -154,8 +154,8 @@ the top of the file:
 
 ```python
 MACHINE = {
-    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 5.0),   # dead-end, from above
-    "vert_thru":  (7.0, 5.0),                           # right through
+    "vert_blind": (35.0, 20.0, 15.0, 10.0, 8.0, 7.0, 5.0),  # dead-end, from above
+    "vert_thru":  (7.0, 5.0),                               # right through
     "YM": (8.0,),        # top edge,   Y = BR, drills towards -Y
     "YP": (4.5,),        # lower edge, Y = 0,  drills towards +Y
     "XM": (8.0, 4.5),    # right edge, X = LA, drills towards -X
@@ -203,9 +203,31 @@ finished part back over and every hole is where the model put it.
 in plan. If the shop means it the other way round, swap those two lines in
 `MACHINE`.
 
+**A bore is one hole only where its faces meet.** Cylinder faces on the same
+axis with the same diameter are joined when their extents overlap or touch —
+the halves of one bore, or a through bore modelled in two pieces. Two bores on
+one axis with material between them stay two holes, so marks punched from both
+faces of a panel are two dead-end bores, one per setup, not one through bore.
+
 When a part needs two setups *and* has a contour, the outline is cut in the
 first program only — repeating it would cut air — and `INFO` says so, because
 a piece cut free in the first setup may no longer be held for the second.
+
+### Center punch
+
+A vertical dead-end bore shallower than `PUNCH_DEPTH` (1 mm) is a **mark**,
+not a hole: the 7 mm bit only dimples the face. It is written as an ordinary
+`<102 \BohrVert\` with `BM="CP"` — woodWOP's *Center punch* mode, which lets
+the cycle allow for the pointed tip. `TI` stays the depth as modelled.
+
+```
+<102 \BohrVert\   XA="68"  YA="197"  BM="CP"  TI="0.5"  DU="7"
+```
+
+This is exactly how woodWOP 9.0.152 saves it —
+`Examples/WoodWop_export/0_340x252-B_1_Center-punch-mode.mpr`, where the marks
+differ from the plain `LS` bores in `BM` alone. Bores 1 mm deep or more, and
+through bores, keep `BM_VERT`. `PUNCH_DEPTH = 0` turns punching off.
 
 ### Grooves
 
@@ -241,7 +263,7 @@ for one.
 **woodWOP programs a groove by one of its edges, not down its middle.**
 `XA/YA`…`XE/YE` is one edge and `RK` offsets the blade a full `NB` to one
 side. With `RK="WRKR"` the groove lies on the +Y side of a run towards +X.
-This is checked against `Examples/WoodWop_export/0_472x420-F_1.mpr`, a
+This is checked against `Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr`, a
 woodWOP 9.0.152 program for the part that `Examples/Meshes/472x420.gltf`
 holds as a model: a groove occupying Y 410…414 is written
 
@@ -386,7 +408,8 @@ outline becomes a contour when it is not simply the bounding rectangle.
 
 Which face ends up on top is **not** a setting: it is decided per part by the
 planner above, because it is a machining choice rather than a property of the
-model. The rest of the block is `SNAP`, `MAX_DIA`, `BM_VERT`, `THICKNESS`,
+model. The rest of the block is `SNAP`, `MAX_DIA`, `BM_VERT`, `BM_PUNCH`,
+`PUNCH_DEPTH`, `THICKNESS`,
 `CONTOUR`, `GROOVE`, `GROOVE_MAX_WIDTH` and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
@@ -518,7 +541,9 @@ To see a label before there is a printer, paste `ZPL` into a ZPL viewer
   sawn grooves — see [Grooves](#grooves) — but `dxf2mpr.py` does not.
 * Feed rates, spindle speeds and tool numbers are left at `STANDARD` /
   woodWOP defaults. `BohrVert` is written with `BM="LS"`, `S_="2"` — change
-  with `--bm-vert` or edit in woodWOP.
+  with `--bm-vert` or edit in woodWOP. The Grasshopper component writes
+  marks under 1 mm deep as `BM="CP"` (see [Center punch](#center-punch));
+  `dxf2mpr.py` does not.
 * Arc direction in contours follows the MPR parser constants documented in
   section 4 of the format spec (`DS`: 0 = counter clockwise short, 1 =
   clockwise short, 2/3 = the same over 180°). Verify the first contour part.

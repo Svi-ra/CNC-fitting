@@ -9,6 +9,46 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.8.0] — 2026-09-22
+
+`Tools/gh_brep2mpr.py` punches shallow marks instead of drilling them, and no
+longer joins marks on opposite faces into a through bore.
+
+### Added
+
+- **Center punch.** A vertical dead-end bore shallower than `PUNCH_DEPTH`
+  (1 mm) is written as `<102 \BohrVert\` with `BM="CP"`, woodWOP's *Center
+  punch* mode, which allows for the drill's pointed tip. `TI` stays the depth
+  as modelled; deeper bores and through bores keep `BM_VERT`. New settings
+  `BM_PUNCH = "CP"` and `PUNCH_DEPTH = 1.0`; `0` turns punching off.
+- The vertical array's dead-end bits now include **7 mm**, the punching bit.
+- `Examples/WoodWop_export/0_340x252-B_1_Center-punch-mode.mpr` — woodWOP
+  9.0.152's own save of the mode, the source for `BM="CP"`; the spec does not
+  list it.
+- `Examples/CAD-models/320x234.dxf` — a panel with marks on both faces.
+
+### Fixed
+
+- **Marks on opposite faces came out as one through bore.** Cylinder faces
+  were joined by axis and diameter alone, from the lowest end to the highest,
+  so a 0.5 mm mark on each face at the same X/Y became one 18 mm bore. Faces
+  are now joined only where their extents overlap or touch; the two marks
+  stay two dead-end bores and the planner gives each its own setup.
+
+### Changed
+
+- `Examples/WoodWop_export/0_472x420-F_1.mpr` renamed
+  `0_472x420-F_1_Standard-mode.mpr`, beside its Center-punch counterpart.
+
+### Verification
+
+- The drilling writer on its own: 0.5 mm deep → `BM="CP" TI="0.5"`, exactly
+  1 mm → `LS`, 14 mm → `LS`, through → `LS TI="18"`.
+- The 320 × 234 part: two marks face up and one on the underside at the same
+  X/Y give `F` with two `CP` marks and `B` with the underside mark and the Ø8
+  dowels — previously `F` held two `TI="18"` through bores. Confirmed in
+  Grasshopper.
+
 ## [0.7.0] — 2026-09-09
 
 `Tools/gh_name2zpl.py`, a new Grasshopper component: the panel names become

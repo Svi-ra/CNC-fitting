@@ -25,7 +25,7 @@ CNC-fitting/
 │  ├─ Meshes/                 one part as a 3D model, paired with the export
 │  ├─ Model-associated/       one part in every woodWOP-related format
 │  ├─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
-│  └─ WoodWop_export/         woodWOP's own program for the meshed part
+│  └─ WoodWop_export/         woodWOP's own programs: the meshed part, Center punch
 └─ Tools/                     the converters, the checker, the GH components
 ```
 
@@ -55,6 +55,7 @@ Key sections used by the tooling:
 | `Noptiera-2.dxf` | DXF AC1027 (2013), **binary SAB/ASM** in `ACDSDATA` | one 3D solid, 401 × 261 × 18 mm, 12 bores |
 | `Noptiera-2.mpr` | MPR | woodWOP 9 scratch program, 410 × 410 × 19 — not a conversion of the DXF |
 | `Test-noptiera.dxf` | DXF AC1021, ASCII SAT | **9 solids** — a whole nightstand in assembly position |
+| `320x234.dxf` | DXF | a 320 × 234 × 18 panel with Ø7 marks 0.5 mm deep punched from **both** faces on one axis — the case that must stay two dead-end bores, not one through bore |
 
 All of these come out of Grasshopper via the Pancake exporter: model space
 holds solids only, on layer `PancakeDefault`. **woodWOP DXF-Import cannot read
@@ -94,9 +95,15 @@ numbers 15…121, sizes 100 × 45 to 1251 × 520 mm. Macro mix: 474 `BohrVert`,
 This is the **behavioural reference** for generated output — real files that
 run on the machine. `Tools/check_mpr.py` passes on all 82.
 
-### `Examples/WoodWop_export/` and `Examples/Meshes/` — the groove reference
+### `Examples/WoodWop_export/` and `Examples/Meshes/` — the groove and punch reference
 
-One part in two forms: `0_472x420-F_1.mpr`, a woodWOP 9.0.152 program for a
+`0_340x252-B_1_Center-punch-mode.mpr` — a woodWOP 9.0.152 program for a
+340 × 252 × 18 panel, two of its bores Ø7 × 0.5 set to *Center punch*. It is
+the **only ground truth for that mode**, which the format spec does not list:
+woodWOP writes an ordinary `<102 \BohrVert\` with `BM="CP"`, every other
+parameter as for an `LS` bore, and `TI` the depth as entered.
+
+One part in two forms: `0_472x420-F_1_Standard-mode.mpr`, a woodWOP 9.0.152 program for a
 472 × 420 × 18 panel, and `472x420.gltf`, the same panel as a mesh (metres,
 Y-up, in assembly position — thickness along X). Ten bores and one groove.
 
