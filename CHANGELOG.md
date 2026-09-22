@@ -9,6 +9,34 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.9.0] — 2026-09-22
+
+Both Grasshopper components pass ShapeDiver's review: neither reads the Rhino
+document nor touches the file system.
+
+### Removed
+
+- **`gh_name2zpl.py` writes no file.** The `PATH` and `WRITE` inputs and the
+  `FILE` output are gone, with the `os`/`io` code behind them — ShapeDiver
+  forbids saving to a local path. `ZPL` is unchanged; save it downstream, as
+  UTF-8 with its CRLF kept. Unwire the three parameters in existing
+  definitions.
+- **`gh_brep2mpr.py` no longer reads `RhinoDoc.ActiveDoc`.** The document's
+  tolerance is replaced by a `TOL = 0.001` setting — the value it already
+  fell back on — and the "document is not in millimetres" warning is gone
+  with it. The model is taken to be in mm.
+
+### Added
+
+- A [ShapeDiver](Tools/README.md#shapediver) section in `Tools/README.md`.
+
+### Verification
+
+- No `RhinoDoc`, `open(`, `os` or `io` left in any `gh_*.py`.
+- `gh_name2zpl.py` with Grasshopper stubbed: two names give two whole
+  `^XA … ^XZ` labels. `gh_brep2mpr.py`'s drilling and planner checks from
+  0.8.0 give the same output.
+
 ## [0.8.0] — 2026-09-22
 
 `Tools/gh_brep2mpr.py` punches shallow marks instead of drilling them, and no

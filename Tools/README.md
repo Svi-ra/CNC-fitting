@@ -417,13 +417,15 @@ It outputs **text, not files**. When you write it out, use CRLF —
 Put a boolean `Run` gate in front of any file writing, or a solve on every
 slider drag will write the whole batch.
 
-The component assumes the Rhino document is in millimetres and puts a warning
-in `INFO` if it is not.
+**The model must be in millimetres.** The component never reads the Rhino
+document — not its units, not its tolerance — because ShapeDiver forbids it;
+see [ShapeDiver](#shapediver). Sizes are taken as mm as they stand, and
+curves are recognised against a fixed `TOL = 0.001`.
 
 ## Labels
 
-`gh_name2zpl.py` turns the panel names into Code 128 labels and writes them as
-one ZPL file, ready to go to the printer. It is a second **Rhino 8 Script
+`gh_name2zpl.py` turns the panel names into Code 128 labels and returns them
+as one ZPL text, ready to go to the printer. It is a second **Rhino 8 Script
 component set to Python 3**, wired downstream of the one above — `NAME` off
 `gh_brep2mpr` is exactly what it wants:
 
@@ -431,11 +433,8 @@ component set to Python 3**, wired downstream of the one above — `NAME` off
 | --- | --- | --- | --- | --- |
 | input | `NAME` | str | **Tree** | one panel name per label |
 | input | `QTY` | int | **Tree** | copies of each label — optional |
-| input | `PATH` | str | Item | where to write the `.zpl` — optional |
-| input | `WRITE` | bool | Item | write it — optional |
 | output | `ZPL` | — | | the whole file, one string, line endings embedded |
 | output | `LABEL` | — | | the same labels one by one, on `NAME`'s paths |
-| output | `FILE` | — | | the file written, if it was |
 | output | `INFO` | — | | the report |
 
 Each label is a complete `^XA … ^XZ` format: the name centred on top, the
@@ -455,9 +454,10 @@ the component does is lay the label out, keep the data printable, and size the
 bars to the stock. `QTY` becomes `^PQ`, which the printer repeats itself, so a
 piece needing four labels is four labels and one format.
 
-Standard library only, and only `io` and `os`, and only when a file is
-written. `WRITE` is the same gate as everywhere here: with `PATH` wired and
-`WRITE` off, `INFO` says what *would* be written and nothing is.
+It writes **no file**. Save `ZPL` as a `.zpl` downstream — a ShapeDiver
+export component online, a writer of your own on the desktop — as UTF-8
+(`^CI28` in every label says so) with its CRLF line endings kept. Nothing is
+imported beyond Grasshopper's own data tree types.
 
 ### Stock and dots
 
@@ -522,6 +522,23 @@ lpr -S 192.168.1.50 -P raw labels.zpl
 
 To see a label before there is a printer, paste `ZPL` into a ZPL viewer
 (labelary.com renders it and reports what is wrong with it).
+
+## ShapeDiver
+
+Both components are written to pass ShapeDiver's script review
+([forbidden Grasshopper functionalities](https://help.shapediver.com/doc/forbidden-grasshopper-functionalities)):
+a definition there may not read from or write to the Rhino document, and may
+not read or save local files.
+
+* **Nothing reads the Rhino document.** `gh_brep2mpr.py` used to take its
+  tolerance and units from `RhinoDoc.ActiveDoc`; it now has `TOL = 0.001` as
+  a setting and assumes millimetres.
+* **Nothing touches the file system.** Both components return text only —
+  `MPR` and `NAME`, `ZPL` — and the files are made downstream: on ShapeDiver
+  by its export components, on the desktop by whatever writer you put there.
+* No sliders or other inputs are changed, no solution is rescheduled, and the
+  only imports are `math`, `Rhino` (for the Brep geometry) and Grasshopper's
+  data tree types.
 
 ## Limits — read this before the first cut
 

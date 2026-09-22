@@ -29,7 +29,8 @@ recognised from the geometry itself.
 
 **Parts are assumed to arrive lying flat in the world XY plane** -- thickness
 along Z. Nothing is rotated out of that plane; a part that is not flat is
-reported in INFO rather than corrected.
+reported in INFO rather than corrected. **Sizes are read as millimetres**:
+the Rhino document is never consulted, so its units are not checked either.
 
     - the world bounding box gives the panel size
     - the long side of the part is turned to X (LONG_X)
@@ -222,15 +223,10 @@ EOL = "\r\n"
 FACE_TOL = 0.02     # "breaks out through this face", mm
 GEO_TOL = 1e-4
 
-try:
-    _doc = Rhino.RhinoDoc.ActiveDoc
-    TOL = _doc.ModelAbsoluteTolerance
-    UNITS = _doc.ModelUnitSystem
-except Exception:
-    TOL = 0.001
-    UNITS = None
-if not TOL or TOL <= 0:
-    TOL = 0.001
+# Model tolerance for recognising cylinders, planes, lines and arcs, mm. Set
+# here rather than read off the Rhino document, which ShapeDiver forbids --
+# so the model has to be in millimetres, as woodWOP expects.
+TOL = 0.001
 
 
 # ---------------------------------------------------------------------------
@@ -1399,10 +1395,6 @@ NAME = DataTree[object]()
 INFO = DataTree[object]()
 TABLE = DataTree[object]()
 TABLE.Add(TABLE_SEP.join(TABLE_HEADER), GH_Path(0))
-
-if UNITS is not None and UNITS != Rhino.UnitSystem.Millimeters:
-    INFO.Add("WARNING: the document is not in millimetres (%s). woodWOP "
-             "expects mm - every size below is wrong." % UNITS, GH_Path(0))
 
 ids = SideInput(ID)
 qtys = SideInput(QTY)

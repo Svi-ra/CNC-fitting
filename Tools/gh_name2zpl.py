@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 r"""
 gh_name2zpl.py -- Grasshopper Script component: panel names -> Code 128
-labels, as one ZPL file ready to send to the printer.
+labels, as one ZPL text ready to send to the printer.
 
 Paste the whole file into a Rhino 8 Script component set to **Python 3**.
 It is self-contained; nothing else needs to be on the module path.
@@ -10,12 +10,15 @@ Component setup
 ---------------
     input   NAME   str      access = Tree   one panel name per label
     input   QTY    int      access = Tree   copies of each label, optional
-    input   PATH   str      access = Item   where to write the .zpl, optional
-    input   WRITE  bool     access = Item   write it, optional
     output  ZPL    -                        the whole file, one string
     output  LABEL  -                        one label per name
-    output  FILE   -                        the file written, if it was
     output  INFO   -                        a report
+
+It outputs text only and writes no file -- ShapeDiver forbids saving to a
+local path. Save ZPL as a .zpl through whatever exports text downstream: a
+ShapeDiver export component online, a panel or a writer of your own on the
+desktop. Keep its CRLF line endings and write it as UTF-8, which `^CI28` in
+every label declares.
 
 Wire the panel names you already have -- NAME from `gh_brep2mpr.py`, a list of
 piece IDs, anything -- and ZPL comes out as one string holding every label,
@@ -96,9 +99,7 @@ MODULE_MAX = 4              # widest bar module to try, in dots
 MODULE_MIN = 2              # narrowest -- below this a handheld starts to miss
 RATIO = 3.0                 # wide bar : narrow bar
 
-ENCODING = "utf-8"          # ^CI28 below must agree with this
 NEWLINE = "\r\n"
-DEFAULT_FILE = "labels.zpl"
 
 
 # ---------------------------------------------------------------------------
@@ -238,37 +239,6 @@ def header(count):
 
 
 # ---------------------------------------------------------------------------
-# the file
-# ---------------------------------------------------------------------------
-
-
-def out_path(path):
-    """PATH as a file to write: a folder gets DEFAULT_FILE inside it."""
-    import os
-    path = str(path).strip().strip('"')
-    if not path:
-        return ""
-    if os.path.isdir(path):
-        return os.path.join(path, DEFAULT_FILE)
-    if not os.path.splitext(path)[1]:
-        return path + ".zpl"
-    return path
-
-
-def write_file(path, text):
-    """Write the labels where PATH says. -> what was written."""
-    import io
-    import os
-    folder = os.path.dirname(os.path.abspath(path))
-    if folder and not os.path.isdir(folder):
-        os.makedirs(folder)
-    # newline="" so the CRLF already in the text is left as it is.
-    with io.open(path, "w", encoding=ENCODING, newline="") as handle:
-        handle.write(text)
-    return path
-
-
-# ---------------------------------------------------------------------------
 # reading the input
 # ---------------------------------------------------------------------------
 
@@ -306,20 +276,6 @@ def as_qty(item):
     return number if number >= 1 else 1
 
 
-def as_bool(value, default=False):
-    """A Grasshopper boolean may arrive as a bool, a number or a string."""
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    text = str(unwrap(value)).strip().lower()
-    if text in ("true", "1", "1.0", "yes", "y", "t"):
-        return True
-    if text in ("false", "0", "0.0", "no", "n", "f", ""):
-        return False
-    return default
-
-
 def name_of(text):
     """A name as INFO shows it -- short, and never throws."""
     return text if len(text) <= 32 else text[:29] + "..."
@@ -353,7 +309,6 @@ class Column(object):
 
 ZPL = ""
 LABEL = DataTree[object]()
-FILE = None
 INFO = DataTree[object]()
 
 # Everything but NAME is optional: the component still runs with only NAME.
@@ -361,16 +316,7 @@ try:
     QTY
 except NameError:
     QTY = None
-try:
-    PATH
-except NameError:
-    PATH = None
-try:
-    WRITE
-except NameError:
-    WRITE = False
 
-write = as_bool(WRITE)
 quantities = Column(QTY)
 branches = branches_of(NAME)
 if not branches:
@@ -432,18 +378,3 @@ if parts:
         INFO.Add("WARNING: the name, the gap and the bars come to %d dots "
                  "more than the label is tall - lower BAR_H_MM, TITLE_MM or "
                  "TITLE_LINES" % over, GH_Path(0))
-
-target = out_path(PATH) if PATH else ""
-if target and not parts:
-    INFO.Add("nothing to write - no labels were made", GH_Path(0))
-elif target and not write:
-    INFO.Add("set WRITE to true to write %s" % target, GH_Path(0))
-elif target:
-    try:
-        FILE = write_file(target, ZPL)
-        INFO.Add("written: %s" % FILE, GH_Path(0))
-    except Exception as exc:
-        INFO.Add("ERROR: %s could not be written - %s" % (target, exc),
-                 GH_Path(0))
-elif write:
-    INFO.Add("WRITE is on but PATH is empty - nowhere to write", GH_Path(0))
