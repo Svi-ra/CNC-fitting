@@ -9,6 +9,69 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.10.0] — 2026-10-09
+
+`Tools/gh_brep2mpr.py` places each piece so the machine can hold it, drills
+through bores slow-fast-slow, and stops writing contour milling the machine
+cannot do.
+
+### Added
+
+- **Placement for the gripper.** The machine grips the piece by its edges and
+  corners, ranked in `GRIP_ZONES` as seen from the piece's back: lower-right
+  corner, right edge, upper-right corner, lower edge, lower-left corner,
+  upper-left corner, left edge, upper edge — right being X = 0 in the
+  program. Each zone is measured on the solid with `Brep.IsPointInside`, as
+  the share of it where the panel is there through its whole thickness, so
+  cut corners, rebates and pockets from either face all count; drilled bores
+  do not. The shares are weighted 128, 64 … down the ranking. New settings
+  `GRIP`, `GRIP_ZONES`, `GRIP_CORNER = 100`, `GRIP_EDGE = 40`,
+  `GRIP_GRID = 4`, `GRIP_CHECK = 3`, `GRIP_WARN = 0.9`. An open Brep is
+  placed by tool access alone, with a note.
+- **Turned end for end.** Besides face up (`F`) and turned over about X
+  (`B`), each setup may be turned 180° in its own plane — so `B` may also be
+  turned over about the short axis. Every bore and groove is tried all four
+  ways. A piece with only Ø4.5 holes in its top edge now needs one setup, not
+  two.
+- **Through bores** are written `BM="LSL"`, woodWOP's *Slow-fast-slow
+  through*, with no `TI`, as woodWOP saves them. New setting
+  `BM_THRU = "LSL"`; `BM_VERT` is for dead-end bores.
+- `INFO` names each setup's placement, how the piece is turned between the
+  two, why a second setup was taken for the grip, and any of the first three
+  zones under 90 % solid.
+
+### Changed
+
+- **The plan is chosen by reach, then grip, then setup count.** Holding the
+  piece outranks the number of setups: the 323 × 78 test piece with an R78
+  corner, all reachable face up in one clamping, now comes out as `B` turned
+  over about its short axis for the edge bores, then `F` turned end for end
+  for the Ø15 — the radius at the upper-left, then the lower-left, instead of
+  across the right edge.
+- **Of two setups, the better-held one goes first** — it can now be `B`.
+  Ties still fall to face up, as modelled.
+- **`CONTOUR` is off by default.** A shaped outline is no longer written as
+  `]1` + `<105 \Konturfraesen\`: the machine has no router, and woodWOP
+  flagged the block (`TNO=""`) as an error. `INFO` now says the piece must
+  arrive cut to shape. `CONTOUR = True` restores the old output exactly.
+- `place()` also returns the map back to world coordinates, and
+  `setup_maps()` takes a `turned` flag. `SETUPS` is replaced by `ORIENTS` and
+  `PLANS`.
+
+### Verification
+
+- Offline, with Rhino stubbed and point-in-solid answered by synthetic
+  pieces: 12 placement cases — plain panel, a cut corner at each end, a
+  rebate, an edge pocket, a blind bore, Ø4.5 in the top edge, the old
+  two-setup case (still `F` then `B`), the same with a cut corner, an open
+  Brep, a piece modelled along Y.
+- The 323 × 78 piece rebuilt from `piece 323x78.dxf` and its MPR: the
+  expected sequence above, all nine bores placed; `check_mpr.py` passes both
+  programs, which hold boring blocks only.
+- A dowel in the X 0 edge and a Ø35 cup hole at the X 0 / Y 0 corner leave a
+  piece in one face-up setup.
+- Not yet run in Grasshopper or on the machine.
+
 ## [0.9.0] — 2026-09-22
 
 Both Grasshopper components pass ShapeDiver's review: neither reads the Rhino

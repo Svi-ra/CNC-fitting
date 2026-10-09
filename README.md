@@ -67,6 +67,13 @@ part that cannot all be reached in one clamping comes out as two programs, one
 face up and one for the piece turned over, named `-F` and `-B`. Anything the
 machine still cannot reach is reported rather than quietly written.
 
+It also places each piece so the machine can **hold** it. Each setup may be
+turned end for end as well as over, and of the placements that reach the
+bores, the one that keeps a cut corner, rebate or pocket away from where the
+gripper takes hold wins — even at the cost of a second setup. It writes
+boring and sawing only: a shaped outline is not milled, since the machine has
+no router, so the piece must arrive cut to shape.
+
 Panels of the same shape are converted once however many times they appear:
 the quantities are added up and the file is named for the total. Material and
 grain direction come in beside the geometry — panels of the same shape cut

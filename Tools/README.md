@@ -174,19 +174,34 @@ Two constraints follow from it:
 * the grooving saw runs **along X only** with a 4 mm blade, and saws from the
   top face — see [Grooves](#grooves) below.
 
-The one re-clamping the planner will use is a **flip about the X axis**: the
-piece is turned face for back, which swaps the top and lower edges and brings
-the underside up. Left and right carry the same bits, so no other rotation
-buys anything.
+The piece always lies with its long side on X, but **four ways round**:
 
-Every bore is tried face up (`F`) and turned over (`B`):
+| Placement | What it does to the piece | Edges |
+| --- | --- | --- |
+| `F` face up | as modelled | as modelled |
+| `F` face up, turned end for end | 180° in its own plane | top ↔ lower, left ↔ right |
+| `B` turned over | 180° about the long (X) axis | top ↔ lower |
+| `B` turned over about its short axis | 180° about the short (Y) axis | left ↔ right |
 
-* one that works only one way **forces** that setup;
-* one that works either way — a through bore, anything in the left or right
-  edge — rides along with the first setup already needed, so a part that fits
-  in one clamping stays **one** file;
-* one that works neither way is named in `INFO` and left out of the program.
-  Set `STRICT = False` to have it written anyway; it is still reported.
+Turning over brings the underside up; turning end for end keeps the face up.
+Because the top and lower edges carry different bits, both moves change what
+the horizontal spindles can reach. Every bore and groove is tried all four
+ways, and **at most two setups** are used — one face up, one turned over:
+
+* a bore that works only some ways **steers** the choice of placement;
+* one that works in every setup chosen — a through bore, anything in the left
+  or right edge — rides along with the first;
+* one that works in none of them is named in `INFO` and left out of the
+  program. Set `STRICT = False` to have it written anyway; it is still
+  reported.
+
+Which plan wins is decided in this order: **reach every bore** the machine can
+reach at all; then **hold the piece best** (see
+[Holding the piece](#holding-the-piece)); only then **the fewest setups**; and
+face up, as modelled, when nothing else decides. A piece with only Ø4.5 holes
+in its top edge therefore needs no flip: turned end for end they sit in the
+lower edge, in one setup. `INFO` names the placement of each setup and how
+the piece is turned between the two.
 
 So a piece with Ø8 *and* Ø4.5 holes in its top edge comes out as two programs:
 
@@ -209,9 +224,73 @@ the halves of one bore, or a through bore modelled in two pieces. Two bores on
 one axis with material between them stay two holes, so marks punched from both
 faces of a panel are two dead-end bores, one per setup, not one through bore.
 
-When a part needs two setups *and* has a contour, the outline is cut in the
-first program only — repeating it would cut air — and `INFO` says so, because
-a piece cut free in the first setup may no longer be held for the second.
+### Holding the piece
+
+The machine grips the piece by its edges and corners, so a placement that puts
+a cut corner, a rebate or a pocket where the gripper takes hold gives a piece
+that cannot be held. The zones it needs, most important first, **as the panel
+is seen from its back** with the face towards the tools — the mirror image of
+the woodWOP view, so "right" here is X = 0 in the program:
+
+| Rank | Zone | In the program |
+| --- | --- | --- |
+| 1 | lower-right corner | X 0, Y 0 |
+| 2 | right edge | X 0 |
+| 3 | upper-right corner | X 0, Y BR |
+| 4 | lower edge | Y 0 |
+| 5 | lower-left corner | X LA, Y 0 |
+| 6 | upper-left corner | X LA, Y BR |
+| 7 | left edge | X LA |
+| 8 | upper edge | Y BR |
+
+Each zone is measured on the solid itself: columns are sampled over it, and
+a column counts only where the panel is there **through its whole
+thickness** — so a pocket or rebate from either face takes it away, as a cut
+corner does. Drilled bores do not count against a zone: a dowel or a cup hole
+near a corner must not cost the piece a setup. Corners are `GRIP_CORNER`
+squares, edges `GRIP_EDGE`-deep strips the length of the edge. The shares are
+weighted 128, 64, 32 … down the list, so losing a whole zone costs more than
+losing every zone below it, while a small nick high up can still lose to a
+large cut lower down. A plan is judged by the weaker of its setups.
+
+**Holding comes before the number of setups.** Take a 323 × 78 piece with an
+R78 radius on one corner, Ø4.5 holes in the lower edge, Ø8 in the top edge, a
+Ø4.5 in the end and two Ø15 blind from the face. Face up, everything is in
+reach in one clamping — but the radius takes the right edge and the
+upper-right corner. So it comes out as two programs instead:
+
+```
+5_323x78-B_2.mpr   turned over about its short axis   7 x BohrHoriz
+5_323x78-F_2.mpr   face up, turned end for end        2 x BohrVert
+```
+
+`B` drills the edges with the radius at the upper-left; then the piece is
+turned over about its long axis and `F` drills the two Ø15 with the radius at
+the lower-left. **Of two setups, the better-held one goes first** — it is
+where the piece is worked hardest. `INFO` says when a second setup was taken
+for the grip alone, and warns when one of the first `GRIP_CHECK` zones is
+still under `GRIP_WARN` solid in the placement chosen.
+
+With nothing to steer it, a piece may also be machined **turned over** in one
+setup, if that keeps the gripping zones more solid than face up.
+
+```python
+GRIP = True          # off: place by tool access alone, as before
+GRIP_CORNER = 100.0  # side of the square checked at each corner, mm
+GRIP_EDGE = 40.0     # depth of the strip checked along each edge, mm
+GRIP_GRID = 4        # sample columns across a corner square (more = slower)
+GRIP_CHECK = 3       # INFO warns when one of the first this-many zones ...
+GRIP_WARN = 0.9      # ... is less solid than this
+```
+
+`GRIP_ZONES` holds the ranking and the zone positions; reorder it to change
+the priorities. The check needs a **closed solid** — an open Brep is placed by
+tool access alone, and `INFO` says so. Each sample is a `Brep.IsPointInside`
+call, made only when the grip actually has a choice to make; raise
+`GRIP_GRID` for finer detail at the cost of time.
+
+The corner and edge sizes are placeholders: set them to the reach of the
+actual gripper.
 
 ### Center punch
 
@@ -226,8 +305,19 @@ the cycle allow for the pointed tip. `TI` stays the depth as modelled.
 
 This is exactly how woodWOP 9.0.152 saves it —
 `Examples/WoodWop_export/0_340x252-B_1_Center-punch-mode.mpr`, where the marks
-differ from the plain `LS` bores in `BM` alone. Bores 1 mm deep or more, and
-through bores, keep `BM_VERT`. `PUNCH_DEPTH = 0` turns punching off.
+differ from the plain `LS` bores in `BM` alone. Dead-end bores 1 mm deep or
+more keep `BM_VERT`. `PUNCH_DEPTH = 0` turns punching off.
+
+### Through bores
+
+A vertical bore that breaks out the far side is drilled **slow-fast-slow**, so
+the bit eases out through the underside: `BM="LSL"` (`BM_THRU`), woodWOP's
+*Slow-fast-slow through* mode. Like woodWOP's own save of it, the block carries
+**no `TI`** — the cycle drills the part's own thickness.
+
+```
+<102 \BohrVert\   XA="101"  YA="291"  BM="LSL"  DU="8"
+```
 
 ### Grooves
 
@@ -281,7 +371,21 @@ that face's outer loop is no longer the bounding rectangle. That notch
 belongs to the groove, not to the panel outline — following it would rout the
 panel to the shape of its own grooving — so the outline is taken from
 whichever of the two faces still goes round the plain rectangle, and only
-when neither does is a contour emitted at all.
+when neither does is the panel taken to be shaped at all.
+
+### Shaped outlines are not milled
+
+The machine has no router, so **an outline that is not the bounding rectangle
+is not milled**: no contour `]1`, no `<105 \Konturfraesen\`. woodWOP flags
+that block as an error — it names no tool, and there is none to name. The
+piece has to arrive already cut to shape, and `INFO` says so. Its shape still
+counts for [Holding the piece](#holding-the-piece), which is measured on the
+solid.
+
+`CONTOUR = True` writes the contour and its milling again, in the first setup
+only — repeating it would cut air — with an `INFO` note when a second setup
+follows, since a piece cut free in the first may no longer be held for the
+second.
 
 ### Identical panels
 
@@ -359,7 +463,10 @@ the model put them.
 <ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-F_4.mpr
 ```
 
-`F` = face up, as modelled. `B` = turned over. The quantity is the sum of
+`F` = face up. `B` = turned over. Whether a setup is also turned end for end
+is not in the name — `INFO` says it, and the program itself shows where
+everything is. Of two programs, the one written first is the one to run
+first; it may be `B`. The quantity is the sum of
 `QTY` over the identical solids folded into that program — 1 per solid if
 nothing came in on `QTY` — and is the same on every program of one piece.
 Two pieces asking for the same name is caught and reported rather than
@@ -391,8 +498,9 @@ because turning it would contradict the layout the definition produced.
 
 Beyond that it takes raw solids with no attached data and recognises the rest:
 the world bounding box gives the panel size, cylindrical faces become
-drillings classified by which face they break out through, and the top face
-outline becomes a contour when it is not simply the bounding rectangle.
+drillings classified by which face they break out through, and the outline,
+when it is not simply the bounding rectangle, is reported and used to place
+the piece for the gripper — not milled.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
@@ -405,12 +513,15 @@ outline becomes a contour when it is not simply the bounding rectangle.
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
 | `MERGE_IDENTICAL` | on | convert one solid per shape and add the quantities up; off converts every solid separately |
 | `DUP_TOL` | 0.01 | how far two solids may differ and still count as the same shape |
+| `CONTOUR` | off | mill a shaped outline (`]1` + `<105 Konturfraesen>`); off while the machine has no router |
+| `GRIP` | on | place each setup so the gripping zones stay solid — see [Holding the piece](#holding-the-piece) |
+| `BM_THRU` | `"LSL"` | drill mode for through bores, written without `TI` |
 
-Which face ends up on top is **not** a setting: it is decided per part by the
-planner above, because it is a machining choice rather than a property of the
-model. The rest of the block is `SNAP`, `MAX_DIA`, `BM_VERT`, `BM_PUNCH`,
-`PUNCH_DEPTH`, `THICKNESS`,
-`CONTOUR`, `GROOVE`, `GROOVE_MAX_WIDTH` and `EOL`.
+Which face ends up on top, and which way round, is **not** a setting: it is
+decided per part by the planner above, because it is a machining choice
+rather than a property of the model. The rest of the block is `SNAP`,
+`MAX_DIA`, `BM_VERT`, `BM_PUNCH`, `PUNCH_DEPTH`, `THICKNESS`, `GROOVE`,
+`GROOVE_MAX_WIDTH`, the `GRIP_…` sizes and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
 `open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason above.
@@ -548,9 +659,14 @@ not read or save local files.
   as well as on everything this tool generates — but the first converted
   program should still be opened in woodWOP and dry-run before it cuts.
 * **The two-setup split covers drilling and grooving.** Contour milling is
-  not checked against the machine, and the `B` program assumes the operator
-  turns the piece over about its long axis and re-references it to the same
-  zero corner.
+  off and, when switched on, not checked against the machine. Each program
+  assumes the operator lays the piece the way `INFO` names — turned over
+  about the long or the short axis, or end for end — and re-references it to
+  the same zero corner.
+* **The gripping zones are an estimate.** Their ranking is the shop's, but
+  `GRIP_CORNER` and `GRIP_EDGE` are placeholders, and the "seen from the back"
+  reading — right = X 0 — was confirmed on one piece. Check the first shaped
+  part on the machine.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.
 * Pockets modelled as solid cavities are **not** converted
@@ -559,8 +675,9 @@ not read or save local files.
 * Feed rates, spindle speeds and tool numbers are left at `STANDARD` /
   woodWOP defaults. `BohrVert` is written with `BM="LS"`, `S_="2"` — change
   with `--bm-vert` or edit in woodWOP. The Grasshopper component writes
-  marks under 1 mm deep as `BM="CP"` (see [Center punch](#center-punch));
-  `dxf2mpr.py` does not.
+  marks under 1 mm deep as `BM="CP"` (see [Center punch](#center-punch)) and
+  through bores as `BM="LSL"` (see [Through bores](#through-bores));
+  `dxf2mpr.py` does neither.
 * Arc direction in contours follows the MPR parser constants documented in
   section 4 of the format spec (`DS`: 0 = counter clockwise short, 1 =
   clockwise short, 2/3 = the same over 180°). Verify the first contour part.

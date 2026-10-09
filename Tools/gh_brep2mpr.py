@@ -42,8 +42,10 @@ the Rhino document is never consulted, so its units are not checked either.
         any other angle               -> <104 \BohrUniv\
     - a flat rectangular cavity floor between the two faces becomes a sawn
       groove, <109 \Nuten\
-    - an outline that is not the bounding rectangle becomes a contour ]1
-      plus <105 \Konturfraesen\
+    - an outline that is not the bounding rectangle is NOT milled: the
+      machine has no router, so the piece must arrive cut to shape, and INFO
+      says so. CONTOUR = True writes it as a contour ]1 plus
+      <105 \Konturfraesen\
 
 What the machine can actually reach
 -----------------------------------
@@ -60,18 +62,40 @@ out as more than one program (see MACHINE below):
       cut. <109 \Nuten\ saws from the top face, so a groove in the underside
       needs the piece turned over just as an underside bore does.
 
-The one allowed re-clamping is a **flip about the X axis**: the piece is
-turned face for back, which swaps the top and lower edges and brings the
-underside up. Left and right carry the same bits, so no other rotation buys
-anything.
+The piece always lies with its long side on X, but four ways round: face up
+(F) or **turned over about the X axis** (B), and either of them **turned end
+for end** -- 180 deg in its own plane. Turning over brings the underside up
+and swaps the top and lower edges; turning end for end swaps them too, and
+left with right, but keeps the face up. Every bore and groove is tried all
+four ways, and at most two setups are used: one face up, one turned over.
 
 So a piece with 8 mm *and* 4.5 mm holes in its top edge comes out as two
 programs: the first drills the 8 mm with the piece face up, the second is
 written for the flipped piece, where those 4.5 mm holes now sit in the lower
 edge. Turn the finished part back and every hole is where the model put it.
+A piece with only 4.5 mm holes in its top edge needs no flip at all: turned
+end for end, they sit in the lower edge, in one setup.
 
 Anything the machine still cannot reach is reported in INFO and left out of
 the program (set STRICT = False to have it written out anyway).
+
+Holding the piece
+-----------------
+The machine grips the piece at its edges and corners, so of the placements
+that reach the bores, the one chosen is the one that holds best by the
+panel's real shape: a cut corner, a rebate or a pocket is kept away from
+where the gripper holds. Holding comes before the number of setups -- a
+piece is turned over and clamped twice rather than held by a cut-away
+corner -- and of two setups, the one that holds better goes first, since it
+also cuts the outline. Only between placements that hold equally well do
+fewer setups win.
+
+The zones are ranked in GRIP_ZONES, lower-right corner first, as the panel
+is seen from its back. Each is measured on the solid itself, through the
+full thickness, so this needs a closed solid; drilled bores are not counted
+as missing material. A zone at the top of the list that is still weak in
+the chosen placement is reported in INFO, and so is a second setup taken
+for the grip alone.
 
 Identical panels
 ----------------
@@ -153,7 +177,10 @@ PUNCH_DEPTH = 1.0   # dead-end vertical bores shallower than this, mm, are
                     # punched with BM_PUNCH rather than drilled (0 = never)
 THICKNESS = None    # force a thickness in mm, or None to measure it
 LONG_X = True       # turn the part so its long side runs along X
-CONTOUR = True      # emit a contour when the outline is not a rectangle
+CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
+                    # <105 Konturfraesen>. Off: the machine has no router,
+                    # and woodWOP flags the milling as an error. The piece
+                    # then has to arrive already cut to shape.
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 
@@ -212,6 +239,46 @@ GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 # rotated equivalents apply to a run towards +Y. Set "NoWRK" to go back to
 # programming the centre line.
 GROOVE_RK = "WRKR"
+
+# ---------------------------------------------------------------------------
+# the gripper
+# ---------------------------------------------------------------------------
+#
+# The machine holds the piece by its edges and corners, so a placement that
+# puts a cut corner, a rebate or a pocket where the gripper takes hold gives a
+# piece that cannot be held. Each setup may be turned end for end -- 180 deg
+# in its own plane -- which keeps the long side on X and the same face up,
+# but carries whatever is cut away to the other end. Of the placements that
+# reach the most bores, the one that keeps these zones most solid is used --
+# even when that costs a second setup, since a piece that cannot be held
+# cannot be machined either. Drilled bores do not count as material lost.
+#
+# The zones, most important first. They are named as the panel is seen from
+# its BACK, with its face towards the tools -- the mirror image of the woodWOP
+# view, so "right" here is X = 0 in the program. (u, v) puts each zone in
+# woodWOP terms: 0 = X 0 / Y 0, 1 = X LA / Y BR, 0.5 = along that edge.
+#
+# A zone is measured as the share of it where the panel is there through its
+# whole thickness. The scores are weighted 128, 64, 32 ... down the list, so
+# losing one whole zone costs more than losing all the zones below it, while
+# a small nick in a high zone can still lose to a large cut in a low one.
+
+GRIP = True
+GRIP_ZONES = (
+    ("lower-right corner", (0.0, 0.0)),
+    ("right edge", (0.0, 0.5)),
+    ("upper-right corner", (0.0, 1.0)),
+    ("lower edge", (0.5, 0.0)),
+    ("lower-left corner", (1.0, 0.0)),
+    ("upper-left corner", (1.0, 1.0)),
+    ("left edge", (1.0, 0.5)),
+    ("upper edge", (0.5, 1.0)),
+)
+GRIP_CORNER = 100.0  # side of the square checked at each corner, mm
+GRIP_EDGE = 40.0     # depth of the strip checked along each edge, mm
+GRIP_GRID = 4        # sample columns across a corner square (more = slower)
+GRIP_CHECK = 3       # INFO warns when one of the first this-many zones ...
+GRIP_WARN = 0.9      # ... is less solid than this
 
 DIA_TOL = 0.2       # a measured diameter counts as a listed one within this
 STRICT = True       # True: leave unreachable bores out and report them
@@ -337,6 +404,7 @@ def arc_ds(p0, p1, centre, mid):
 class Part(object):
     def __init__(self):
         self.lx = self.ly = self.lz = 0.0
+        self.turned = False         # turned end for end on the machine
         self.macros = []            # (id, name, [(key, value), ...])
         self.contour = None         # [(kind, [(param, value), ...]), ...]
         self.notes = []
@@ -641,14 +709,19 @@ def _apply(fn, corners, holes, planars):
 def place(corners, holes, planars, notes):
     """Long side along X, part sitting on the zero point, face up as modelled.
 
-    Which face ends up on top -- and so which edge is the top edge -- is left
-    to the setup planner below. That is a machining decision, not a property
-    of the model.
+    Which face ends up on top, and which end of the piece is where -- and so
+    which edge is the top edge -- is left to the setup planner below. That is
+    a machining decision, not a property of the model.
+
+    Returns the placed corners and a map from placed coordinates back to the
+    world, where the Brep itself still sits.
     """
+    turned = False
     if LONG_X:
         x0, y0, _z0, x1, y1, _z1 = _bbox(corners, holes)
         if (x1 - x0) < (y1 - y0) - GEO_TOL:
             corners = _apply(rot_z90, corners, holes, planars)
+            turned = True
             notes.append("turned 90 deg so the long side runs along X - the "
                          "top and lower edges follow the turn")
 
@@ -656,17 +729,40 @@ def place(corners, holes, planars, notes):
     if abs(x0) > GEO_TOL or abs(y0) > GEO_TOL or abs(z0) > GEO_TOL:
         corners = _apply(lambda p: vsub(p, (x0, y0, z0)),
                          corners, holes, planars)
-    return corners
+    else:
+        x0 = y0 = z0 = 0.0
+
+    def to_world(p):
+        q = (p[0] + x0, p[1] + y0, p[2] + z0)
+        return (-q[1], q[0], q[2]) if turned else q     # undoes rot_z90
+
+    return corners, to_world
 
 
 # ---------------------------------------------------------------------------
-# setups: F = face up as modelled, B = turned over about the X axis
+# setups: F = face up as modelled, B = turned over about the X axis,
+# either of them possibly turned end for end as well
 # ---------------------------------------------------------------------------
 
-SETUPS = ("F", "B")
+# (mark, turned end for end). The mark alone names the file; the turn is a
+# matter of which way round the piece goes on the machine, and INFO says it.
+ORIENTS = (("F", False), ("F", True), ("B", False), ("B", True))
+
+ORIENT_NAME = {
+    ("F", False): "face up",
+    ("F", True): "face up, turned end for end",
+    ("B", False): "turned over",
+    ("B", True): "turned over about its short axis",
+}
+
+# What may be tried, best first when nothing else tells them apart: one
+# clamping before two, face up before turned over, as modelled before turned
+# end for end. A pair is always face up first, then turned over.
+PLANS = ([(o,) for o in ORIENTS]
+         + [(f, b) for f in ORIENTS[:2] for b in ORIENTS[2:]])
 
 
-def setup_maps(mark, lx, ly, lz):
+def setup_maps(mark, lx, ly, lz, turned=False):
     """(point map, direction map) taking base coordinates into a setup.
 
     B is a 180 deg turn about the X axis followed by the shift that puts the
@@ -674,12 +770,144 @@ def setup_maps(mark, lx, ly, lz):
     so that shift is exactly (0, ly, lz). X is untouched, so a bore in the
     left edge stays in the left edge; the top and lower edges swap, and the
     two faces swap.
+
+    Turned end for end adds a 180 deg turn in the panel's own plane: left and
+    right swap, and so do the top and lower edges, while the face that is up
+    stays up. On top of B that makes a turn about the Y axis.
+
+    Every one of these maps is its own inverse.
     """
+    if mark == "B" and turned:
+        return (lambda p: (lx - p[0], p[1], lz - p[2]),
+                lambda v: (-v[0], v[1], -v[2]))
     if mark == "B":
         return (lambda p: (p[0], ly - p[1], lz - p[2]),
                 lambda v: (v[0], -v[1], -v[2]))
+    if turned:
+        return (lambda p: (lx - p[0], ly - p[1], p[2]),
+                lambda v: (-v[0], -v[1], v[2]))
     ident = lambda v: v
     return (ident, ident)
+
+
+# ---------------------------------------------------------------------------
+# gripping: how much of each zone the gripper takes hold of is still there
+# ---------------------------------------------------------------------------
+
+def _fraction(solid, x0, y0, w, h, nx, ny):
+    """Share of the columns sampled over a rectangle that are solid."""
+    hits = 0
+    for i in range(nx):
+        for j in range(ny):
+            if solid(x0 + (i + 0.5) * w / nx, y0 + (j + 0.5) * h / ny):
+                hits += 1
+    return float(hits) / (nx * ny)
+
+
+def zone_solid(solid, u, v, lx, ly):
+    """How solid one zone is, 0..1, the zone given as (u, v) -- see
+    GRIP_ZONES. Corners are squares; edges are strips the length of the
+    edge, so a corner cut away also shortens the edges it sits on."""
+    n = GRIP_GRID
+    thin = max(2, n // 2)
+    if u != 0.5 and v != 0.5:
+        cx, cy = min(GRIP_CORNER, lx / 2.0), min(GRIP_CORNER, ly / 2.0)
+        return _fraction(solid, 0.0 if u == 0 else lx - cx,
+                         0.0 if v == 0 else ly - cy, cx, cy, n, n)
+    if u == 0.5:
+        dy = min(GRIP_EDGE, ly / 2.0)
+        return _fraction(solid, 0.0, 0.0 if v == 0 else ly - dy,
+                         lx, dy, 3 * n, thin)
+    dx = min(GRIP_EDGE, lx / 2.0)
+    return _fraction(solid, 0.0 if u == 0 else lx - dx, 0.0,
+                     dx, ly, thin, 3 * n)
+
+
+class Grip(object):
+    """How well each placement leaves the gripping zones solid.
+
+    `solid(x, y)` answers, in the placed frame, whether the panel is there
+    through its whole thickness at that point. Each zone is sampled once in
+    that frame, and only when a choice actually hangs on it; a placement
+    then just looks up which of those zones it puts where.
+    """
+
+    def __init__(self, solid, lx, ly):
+        self.solid = solid
+        self.lx, self.ly = lx, ly
+        self.cache = {}
+        n = len(GRIP_ZONES)
+        self.weights = [2.0 ** (n - 1 - i) for i in range(n)]
+
+    def _base(self, u, v):
+        key = (u, v)
+        if key not in self.cache:
+            self.cache[key] = zone_solid(self.solid, u, v, self.lx, self.ly)
+        return self.cache[key]
+
+    def zones(self, orient):
+        """Solid share of each GRIP_ZONES entry, in the setup `orient`."""
+        pt, _vec = setup_maps(orient[0], 1.0, 1.0, 1.0, orient[1])
+        out = []
+        for _name, (u, v) in GRIP_ZONES:
+            b = pt((u, v, 0.0))
+            out.append(self._base(round(b[0], 3), round(b[1], 3)))
+        return out
+
+    def score(self, orient):
+        """One number, 0..1: the zones weighted down the list."""
+        s = self.zones(orient)
+        return round(sum(w * x for w, x in zip(self.weights, s))
+                     / sum(self.weights), 4)
+
+
+def in_bore(p, hole, margin=0.5):
+    """Is the point inside this bore's cylinder, give or take `margin`?"""
+    d = vsub(hole.p1, hole.p0)
+    n = vlen(d)
+    if n < 1e-9:
+        return False
+    a = vmul(d, 1.0 / n)
+    t = vdot(vsub(p, hole.p0), a)
+    if t < -margin or t > n + margin:
+        return False
+    r = vsub(vsub(p, hole.p0), vmul(a, t))
+    return vlen(r) <= 0.5 * hole.dia + margin
+
+
+def grip_for(brep, to_world, lx, ly, thick, holes, notes):
+    """A Grip measured on the solid itself, or None if it cannot be.
+
+    A column counts as solid when the point at the middle of the thickness
+    and the points just inside both faces are all in the solid -- so a pocket
+    or a rebate from either face takes it away, as a cut corner does.
+
+    Drilled bores do not count against a zone: a dowel hole near a corner
+    does not stop the gripper holding the panel, and it must not cost the
+    piece a setup. Round openings over MAX_DIA are left counting -- a big
+    radius on a corner is read as one, and it does take material away.
+    """
+    if not GRIP:
+        return None
+    if not brep.IsSolid:
+        notes.append("not a closed solid - the gripping zones were not "
+                     "checked, the placement follows tool access alone")
+        return None
+    tol = max(TOL, 0.01)
+    levels = [thick * f for f in (0.5, 0.1, 0.9)]
+    bores = [h for h in holes if h.dia <= MAX_DIA]
+
+    def solid(x, y):
+        for z in levels:
+            w = to_world((x, y, z))
+            if brep.IsPointInside(Rhino.Geometry.Point3d(w[0], w[1], w[2]),
+                                  tol, False):
+                continue
+            if not any(in_bore((x, y, z), h) for h in bores):
+                return False
+        return True
+
+    return Grip(solid, lx, ly)
 
 
 # ---------------------------------------------------------------------------
@@ -1025,20 +1253,78 @@ def check_flat(lx, ly, lz, notes):
 # planning the setups
 # ---------------------------------------------------------------------------
 
-def plan(holes, grooves, lx, ly, lz, notes):
-    """Split the drilling over as few setups as the machine allows.
+# How one setup of a pair lies relative to the other, by which of X and Y
+# change direction between them.
+_SIGNS = {("F", False): (1, 1), ("F", True): (-1, -1),
+          ("B", False): (1, -1), ("B", True): (-1, 1)}
+TURN_NAME = {(1, -1): "turned over about its long axis",
+             (-1, 1): "turned over about its short axis",
+             (-1, -1): "turned end for end"}
 
-    Every bore is tried face up and turned over. One that works only one way
-    forces that setup; one that works either way rides along with the first
-    setup already needed, so a part that fits in one clamping stays one file.
-    Whatever works neither way is reported and, under STRICT, left out.
+
+def turn_between(a, b):
+    """What the operator does to the piece to go from setup a to setup b."""
+    sa, sb = _SIGNS[a], _SIGNS[b]
+    return TURN_NAME[(sa[0] * sb[0], sa[1] * sb[1])]
+
+
+def _grip_key(p, grip):
+    """Smaller is better: the weaker setup's grip, then fewer setups, then
+    the stronger setup's grip. Without a Grip only the count is left."""
+    s = sorted(grip.score(o) for o in p) if grip is not None else [0.0]
+    return (-s[0], len(p), -s[-1])
+
+
+def _choose(tried, grip):
+    """The plan to use, in machining order, and every plan that reaches as
+    many bores.
+
+    Reaching the bores comes first: no placement is worth a bore the machine
+    cannot drill. Then the grip, judged by the weaker of the setups -- it
+    outranks the number of setups, so a piece is turned over and clamped a
+    second time rather than held by a cut-away corner. Only between plans
+    that hold the piece equally well do fewer setups win, and after that the
+    order of PLANS, which keeps the face up when nothing else decides.
+
+    Of two setups, the one that holds better goes first: it is where the
+    piece is worked hardest -- and where the outline is cut, if CONTOUR is
+    on.
+    """
+    def missed(p):
+        return sum(1 for _k, _i, _s, opts, _w in tried
+                   if not any(o in opts for o in p))
+
+    least = min(missed(p) for p in PLANS)
+    able = [p for p in PLANS if missed(p) == least]
+    best = min(able, key=lambda p: _grip_key(p, grip))  # first of equals
+    if (len(best) == 2 and grip is not None
+            and grip.score(best[1]) > grip.score(best[0])):
+        best = (best[1], best[0])
+    return best, able
+
+
+def plan(holes, grooves, lx, ly, lz, notes, grip=None):
+    """Split the drilling over the setups that reach it and hold the piece.
+
+    Every bore is tried in each of the four ways the piece can lie: face up
+    or turned over, either way round. A bore that works only some ways steers
+    the choice; one that works in every setup chosen rides along with the
+    first. Whatever works in none of them is reported and, under STRICT,
+    left out. Which plan wins is _choose's business: reach, then grip, then
+    the number of setups.
+
+    Turning the piece end for end swaps its top and lower edges, which carry
+    different bits, so it can save the second setup a flip would cost -- or
+    move a cut corner or a pocket away from where the gripper holds: see
+    GRIP_ZONES.
 
     Grooves go through the same mill: the saw cuts from the top face only,
     so a slot in the underside needs the piece turned over exactly as an
     underside bore does, and rides along with that setup when there is one.
 
-    Returns [(mark, [(feature, size), ...]), ...], first setup first, where
-    size is the nominal diameter of a bore or the width of a groove.
+    Returns [(orient, [(feature, size), ...]), ...], first setup first, where
+    orient is (mark, turned) and size is the nominal diameter of a bore or
+    the width of a groove.
     """
     jobs = []
     for hole in holes:
@@ -1057,8 +1343,8 @@ def plan(holes, grooves, lx, ly, lz, notes):
     for kind, item, size in jobs:
         opts = {}
         why = {}
-        for mark in SETUPS:
-            pt, vec = setup_maps(mark, lx, ly, lz)
+        for orient in ORIENTS:
+            pt, vec = setup_maps(orient[0], lx, ly, lz, orient[1])
             if kind == "hole":
                 feat = feature(item.moved(pt), lx, ly, lz)
                 want = size
@@ -1067,37 +1353,35 @@ def plan(holes, grooves, lx, ly, lz, notes):
                 want = feat.get("nb", 0.0)
             ok, nom, reason = reachable(feat, want)
             if ok:
-                opts[mark] = (feat, nom)
-                if kind == "hole" and abs(nom - want) > 0.001:
-                    notes.append("%s mm bore taken as the %s mm bit"
-                                 % (fnum(want), fnum(nom)))
+                opts[orient] = (feat, nom)
             else:
-                why[mark] = reason
+                why[orient] = reason
         tried.append((kind, item, size, opts, why))
 
-    needed = [mark for mark in SETUPS
-              if any(len(o) == 1 and mark in o for _k, _i, _s, o, _w in tried)]
-    if not needed:
-        needed = ["F"]
+    needed, able = _choose(tried, grip)
 
-    work = dict((mark, []) for mark in needed)
+    work = dict((o, []) for o in needed)
     for kind, item, size, opts, why in tried:
-        here = [m for m in needed if m in opts]
+        here = [o for o in needed if o in opts]
         if here:
             feat, nom = opts[here[0]]
             work[here[0]].append((feat, nom))
+            if kind == "hole" and abs(nom - size) > 0.001:
+                notes.append("%s mm bore taken as the %s mm bit"
+                             % (fnum(size), fnum(nom)))
             continue
-        # Reachable in neither setup. Say so; under STRICT the bore is simply
-        # not in the program, otherwise it is written face up so that at
-        # least it shows in woodWOP and someone has to look at it.
-        face_up, over = why.get("F"), why.get("B")
-        reason = face_up or over or "not reachable"
-        if face_up and over and over != face_up:
-            reason = "%s (turned over: %s)" % (face_up, over)
+        # Reachable in no setup chosen. Say so; under STRICT the bore is
+        # simply not in the program, otherwise it goes in the first setup so
+        # that at least it shows in woodWOP and someone has to look at it.
+        first = why.get(needed[0])
+        other = why.get(needed[1]) if len(needed) > 1 else None
+        reason = first or other or "not reachable"
+        if first and other and other != first:
+            reason = "%s (%s: %s)" % (first, ORIENT_NAME[needed[1]], other)
         notes.append(reason + (" - left out of the program" if STRICT
                                else " - WRITTEN ANYWAY (STRICT is off)"))
         if not STRICT:
-            pt, vec = setup_maps(needed[0], lx, ly, lz)
+            pt, vec = setup_maps(needed[0][0], lx, ly, lz, needed[0][1])
             feat = (feature(item.moved(pt), lx, ly, lz) if kind == "hole"
                     else groove_feature(item.moved(pt, vec), lx, ly, lz))
             if feat["t"] != "none":
@@ -1105,13 +1389,61 @@ def plan(holes, grooves, lx, ly, lz, notes):
                     (feat, size if kind == "hole" else feat["nb"]))
 
     if len(needed) > 1:
-        notes.append("two setups: %s does everything reachable face up, then "
-                     "the piece is turned over about its long axis for %s"
-                     % (needed[0], needed[1]))
-    elif needed[0] == "B":
-        notes.append("one setup, but with the piece turned over - the "
-                     "machining is all on the underside as modelled")
-    return [(mark, work[mark]) for mark in needed]
+        notes.append("two setups: %s first, %s; then the piece is %s for %s"
+                     % (needed[0][0], ORIENT_NAME[needed[0]],
+                        turn_between(needed[0], needed[1]), needed[1][0]))
+    grip_notes(needed, able, grip, notes)
+    return [(o, work[o]) for o in needed]
+
+
+def _where(u, v):
+    """A zone's place in the program, e.g. "X 0, Y BR"."""
+    out = []
+    if u != 0.5:
+        out.append("X " + ("0" if u == 0 else "LA"))
+    if v != 0.5:
+        out.append("Y " + ("0" if v == 0 else "BR"))
+    return ", ".join(out)
+
+
+def grip_notes(needed, able, grip, notes):
+    """Say what the grip cost or bought, and where it is still weak."""
+    fewest = min(len(p) for p in able)
+    if grip is not None and len(needed) > fewest:
+        # What the fewest setups would have done to the grip: the first zone,
+        # by rank, that the weaker of its setups holds worse than this plan.
+        alt = min([p for p in able if len(p) == fewest],
+                  key=lambda p: _grip_key(p, grip))
+        weak = min(alt, key=grip.score)
+        mine = min(needed, key=grip.score)
+        for (name, (u, v)), was, now in zip(GRIP_ZONES, grip.zones(weak),
+                                            grip.zones(mine)):
+            if was < now:
+                notes.append(
+                    "%d setups where %d would reach every bore - %s the %s "
+                    "(seen from the back; %s in the program) would be only "
+                    "%d%% solid"
+                    % (len(needed), fewest,
+                       "placed " + ORIENT_NAME[weak] + ",",
+                       name, _where(u, v), int(round(was * 100))))
+                break
+    elif len(needed) == 1 and needed[0][0] == "B":
+        if any(p[0][0] == "F" for p in able if len(p) == 1):
+            notes.append("one setup, turned over - face up would reach the "
+                         "same bores but hold the piece worse")
+        else:
+            notes.append("one setup, but with the piece turned over - the "
+                         "machining is all on the underside as modelled")
+    if grip is None:
+        return
+    for o in needed:
+        shares = grip.zones(o)
+        for (name, (u, v)), share in list(zip(GRIP_ZONES, shares))[:GRIP_CHECK]:
+            if share < GRIP_WARN:
+                notes.append(
+                    "%s: the %s (seen from the back; %s in the program) is "
+                    "only %d%% solid - check the gripper can hold the piece"
+                    % (o[0], name, _where(u, v), int(round(share * 100))))
 
 
 def brep_to_setups(brep):
@@ -1121,7 +1453,7 @@ def brep_to_setups(brep):
         raise ValueError("invalid Brep")
 
     corners, holes, planars = read_brep(brep, notes)
-    corners = place(corners, holes, planars, notes)
+    corners, to_world = place(corners, holes, planars, notes)
 
     x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
     lx, ly = x1 - x0, y1 - y0
@@ -1132,12 +1464,15 @@ def brep_to_setups(brep):
     check_flat(lx, ly, lz, notes)
 
     grooves = find_grooves(planars, lz, notes) if GROOVE else []
+    # Measured on the solid as it is, so the real thickness, not THICKNESS.
+    grip = grip_for(brep, to_world, lx, ly, z1 - z0, holes, notes)
 
     out = []
-    planned = plan(holes, grooves, lx, ly, lz, notes)
-    for i, (mark, work) in enumerate(planned):
+    planned = plan(holes, grooves, lx, ly, lz, notes, grip)
+    for i, ((mark, turned), work) in enumerate(planned):
         part = Part()
         part.lx, part.ly, part.lz = lx, ly, lz
+        part.turned = turned
         part.notes = notes
         for feat, dia in work:
             m = macro(feat, dia, lz)
@@ -1146,14 +1481,20 @@ def brep_to_setups(brep):
         part.macros.sort(key=lambda m: (m[0],
                                         float(dict(m[2]).get("XA", 0)),
                                         float(dict(m[2]).get("YA", 0))))
-        if CONTOUR and i == 0:
+        if i == 0:
             # The outline is cut once, in the first setup. After that the
             # piece is no longer the rectangle the blank started as, so
             # repeating the contour in the second file would cut air.
-            pt, vec = setup_maps(mark, lx, ly, lz)
+            pt, vec = setup_maps(mark, lx, ly, lz, turned)
             moved = [(vec(n), [s.moved(pt) for s in segs])
                      for n, segs in planars]
-            part.contour = outline(moved, part)
+            shape = outline(moved, part)
+            if shape and not CONTOUR:
+                notes.append("the outline is not a rectangle and is not "
+                             "milled (CONTOUR is off) - the piece has to "
+                             "arrive already cut to shape")
+            elif shape:
+                part.contour = shape
             if part.contour and len(planned) > 1:
                 notes.append("the outline is cut in the first setup only - "
                              "check the piece is still held well enough for "
@@ -1276,6 +1617,7 @@ def describe(ident, qty, setups, copies=(), material="", along_grain=True):
         if any(name != ident for name in given):
             lines.append("  note: the copies did not all carry the same ID - "
                          "the programs are named after %s" % ident)
+    width = max(len(ORIENT_NAME[(m, p.turned)]) for m, p in setups)
     for mark, part in setups:
         counts = {}
         for _mid, name, _p in part.macros:
@@ -1284,8 +1626,8 @@ def describe(ident, qty, setups, copies=(), material="", along_grain=True):
                            for k, v in sorted(counts.items()))
         if part.contour:
             detail += (", " if detail else "") + "contour"
-        lines.append("  %s  %-11s %s"
-                     % (mark, "face up" if mark == "F" else "turned over",
+        lines.append("  %s  %-*s %s"
+                     % (mark, width, ORIENT_NAME[(mark, part.turned)],
                         detail or "no machining"))
     for note in dict.fromkeys(first.notes):
         lines.append("  note: %s" % note)
