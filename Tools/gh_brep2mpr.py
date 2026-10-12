@@ -107,9 +107,16 @@ saying which program covers them.
 
 Two solids count as the same shape when they measure the same from the corner
 of their own bounding boxes, within DUP_TOL -- so it does not matter where in
-the model they sit. Orientation is deliberately not normalised: a copy turned
-end for end has its holes at the other end and is a different program. Set
+the model they sit. Every vertex and face is paired with its closest
+counterpart and may be out by up to DUP_TOL; nothing is rounded to a grid,
+where a value on a half step would split identical copies on floating point
+noise. Orientation is deliberately not normalised: a copy turned end for end
+has its holes at the other end and is a different program. Set
 MERGE_IDENTICAL = False to convert every solid separately.
+
+A piece the same size as an earlier one that still gets a program of its own
+gets an INFO line saying what kept them apart -- the material, the grain, or
+the first vertex or face that differs, with both values.
 
 Folding copies in does not eat any numbers: the programs are numbered by
 program, 0, 1, 2 ... in the order the pieces come in, so the numbering runs
@@ -158,6 +165,7 @@ came in on QTY), and is the same on every program of one piece. With no ID
 input the programs are simply numbered 0, 1, 2 ... in order.
 """
 
+import bisect
 import math
 
 import Rhino
@@ -1507,6 +1515,11 @@ def brep_to_setups(brep):
 # identical panels
 # ---------------------------------------------------------------------------
 
+FACE_KIND = {"cyl": "round", "pln": "flat", "srf": "free-form"}
+FACE_VALUE = ("box min X", "box min Y", "box min Z",
+              "box max X", "box max Y", "box max Z")
+
+
 def geometry_key(brep):
     """A shape fingerprint, so the same panel is only converted once.
 
@@ -1516,39 +1529,153 @@ def geometry_key(brep):
     program. Orientation is deliberately *not* normalised -- a copy turned end
     for end carries its holes at the other end and is a different program.
 
+    Returns (counts, size, verts, faces). Only *counts* -- how many vertices,
+    and how many faces of each kind -- is exact, and it only says which
+    solids are worth comparing. Everything else is a measurement, and
+    shape_mismatch compares those within DUP_TOL. They are deliberately not
+    rounded to a DUP_TOL grid: a value that falls on a half step (6.705 on a
+    0.01 grid, say -- a 4.5 mm bore's flat bottom reports exactly that) lands
+    in one cell or the next on floating point noise alone, and identical
+    copies came out as different programs.
+
     Nothing here calls the converter, so a duplicate costs a bounding box and
     a walk over the vertices instead of a full conversion.
     """
     box = brep.GetBoundingBox(True)
     org = (box.Min.X, box.Min.Y, box.Min.Z)
 
-    def q(p):
-        """A point relative to the bounding box corner, in DUP_TOL steps."""
-        return (int(round((p[0] - org[0]) / DUP_TOL)),
-                int(round((p[1] - org[1]) / DUP_TOL)),
-                int(round((p[2] - org[2]) / DUP_TOL)))
+    def rel(p):
+        """A point relative to the bounding box corner."""
+        return (p[0] - org[0], p[1] - org[1], p[2] - org[2])
 
-    size = q((box.Max.X, box.Max.Y, box.Max.Z))
+    size = rel((box.Max.X, box.Max.Y, box.Max.Z))
 
     # Vertex positions alone already separate two different panels; the face
     # list adds the radius and axis of every bore, which vertices do not carry.
-    verts = sorted(q(p3(v.Location)) for v in brep.Vertices)
+    verts = [rel(p3(v.Location)) for v in brep.Vertices]
 
+    # (kind, Rhino's face index, radius and axis of a bore, face box)
     faces = []
-    for face in brep.Faces:
+    for fi, face in enumerate(brep.Faces):
         ok, cyl = face.UnderlyingSurface().TryGetCylinder(TOL)
         if ok:
-            tag = ("cyl", int(round(cyl.Radius / DUP_TOL)),
-                   tuple(int(round(c / DUP_TOL))
-                         for c in canonical_axis(p3(cyl.Axis))))
+            kind = "cyl"
+            bore = (cyl.Radius,) + canonical_axis(p3(cyl.Axis))
         else:
             ok, _pl = face.TryGetPlane(TOL)
-            tag = ("pln" if ok else "srf", 0, (0, 0, 0))
+            kind, bore = ("pln" if ok else "srf"), ()
         fb = face.GetBoundingBox(True)
-        faces.append(tag + q(p3(fb.Min)) + q(p3(fb.Max)))
-    faces.sort()
+        faces.append((kind, fi, bore, rel(p3(fb.Min)) + rel(p3(fb.Max))))
 
-    return (size, tuple(verts), tuple(faces))
+    kinds = {}
+    for f in faces:
+        kinds[f[0]] = kinds.get(f[0], 0) + 1
+    counts = (len(verts), tuple(sorted(kinds.items())))
+    return (counts, size, verts, faces)
+
+
+def _gap(a, b):
+    """How far apart two runs of measurements are: their largest difference."""
+    return max([abs(x - y) for x, y in zip(a, b)] or [0.0])
+
+
+def _face_gap(a, b):
+    """How far apart two faces are, or None when they are not the same kind.
+
+    A bore's axis is only a direction up to its sign, so it is compared both
+    ways round.
+    """
+    if a[0] != b[0]:
+        return None
+    gap = _gap(a[3], b[3])
+    if a[2] and b[2]:
+        flipped = tuple(-c for c in b[2][1:])
+        gap = max(gap, abs(a[2][0] - b[2][0]),
+                  min(_gap(a[2][1:], b[2][1:]), _gap(a[2][1:], flipped)))
+    return gap
+
+
+def _unpaired(items, others, pivot, gap):
+    """The first of *items* left without a partner of its own in *others*.
+
+    Every item is paired with the closest unused one within DUP_TOL; None
+    when they all pair up. *pivot* is one of the measurements *gap* looks at,
+    so the search only has to look at the others whose pivot is within
+    DUP_TOL of the item's -- the panel can have hundreds of faces.
+    """
+    order = sorted(range(len(others)), key=lambda j: pivot(others[j]))
+    keys = [pivot(others[j]) for j in order]
+    used = set()
+    for item in items:
+        p = pivot(item)
+        k = bisect.bisect_left(keys, p - DUP_TOL)
+        best = None
+        while k < len(keys) and keys[k] <= p + DUP_TOL:
+            j = order[k]
+            if j not in used:
+                g = gap(item, others[j])
+                if g is not None and g <= DUP_TOL and (best is None
+                                                       or g < best[0]):
+                    best = (g, j)
+            k += 1
+        if best is None:
+            return item
+        used.add(best[1])
+    return None
+
+
+def _point_text(p):
+    return "(%s)" % ", ".join(fnum(c, 4) for c in p)
+
+
+def shape_mismatch(a, b):
+    """None when fingerprint *b* is the same shape as *a* within DUP_TOL.
+
+    Otherwise the first thing found that differs, in words for INFO, with
+    *b* as "here" and *a* as "there".
+    """
+    (counts_a, size_a, verts_a, faces_a) = a
+    (counts_b, size_b, verts_b, faces_b) = b
+    if _gap(size_a, size_b) > DUP_TOL:
+        return "the bounding box is %s here and %s there" % (
+            " x ".join(fnum(c, 4) for c in size_b),
+            " x ".join(fnum(c, 4) for c in size_a))
+    if counts_a != counts_b:
+        def tally(counts):
+            return ", ".join("%d %s" % (n, FACE_KIND[k])
+                             for k, n in counts[1])
+        return ("it has %d vertices and %s faces here, %d and %s there"
+                % (counts_b[0], tally(counts_b), counts_a[0], tally(counts_a)))
+
+    v = _unpaired(verts_b, verts_a, lambda p: p[0], _gap)
+    if v is not None:
+        near = min(verts_a, key=lambda w: _gap(v, w))
+        return ("the vertex at %s here is %s mm from the nearest one there, "
+                "%s" % (_point_text(v), fnum(_gap(v, near), 4),
+                        _point_text(near)))
+
+    f = _unpaired(faces_b, faces_a, lambda g: g[3][0], _face_gap)
+    if f is not None:
+        near = min((g for g in faces_a if g[0] == f[0]),
+                   key=lambda g: _face_gap(f, g))
+        # name the one measurement that is furthest out
+        rows = [(FACE_VALUE[k], f[3][k], near[3][k]) for k in range(6)]
+        if f[2]:
+            rows.append(("radius", f[2][0], near[2][0]))
+        label, here, there = max(rows, key=lambda r: abs(r[1] - r[2]))
+        if abs(here - there) <= DUP_TOL:
+            if f[2] and _face_gap(f, near) > DUP_TOL:
+                return ("the %s face %d is a bore along %s here, %s there"
+                        % (FACE_KIND[f[0]], f[1], _point_text(f[2][1:]),
+                           _point_text(near[2][1:])))
+            # its nearest match there was already taken by another face
+            return ("the %s face %d here has no face of its own there - the "
+                    "one it matches is already taken by another face here"
+                    % (FACE_KIND[f[0]], f[1]))
+        return ("the %s face %d has its %s at %s here, %s there - %s mm "
+                "apart" % (FACE_KIND[f[0]], f[1], label, fnum(here, 4),
+                           fnum(there, 4), fnum(abs(here - there), 4)))
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1799,27 +1926,59 @@ for label, values in (("DIR", directions), ("MAT", materials)):
 # Group by shape, keeping the order the parts came in. The first solid of a
 # group is the one converted; the rest only add to its quantity.
 groups = []                         # lists of indices into entries
-first_seen = {}
+shapes = []                         # per group: its first solid's fingerprint
+apart = {}                          # group -> (earlier group, why not in it)
 for i, entry in enumerate(entries):
-    key = None
+    sig = None
     if MERGE_IDENTICAL:
         try:
+            sig = geometry_key(entry[1])
+        except Exception:
+            sig = None              # unreadable shape: leave it on its own
+    home = None
+    if sig is not None:
+        for g, other in enumerate(shapes):
+            first = entries[groups[g][0]]
             # Material and grain are part of what makes two pieces the same:
             # the very same shape cut from another board, or turned across
             # the grain, is a piece of its own however well the solids match.
-            key = (geometry_key(entry[1]), entry[4], entry[5])
-        except Exception:
-            key = None              # unreadable shape: leave it on its own
-    if key is not None and key in first_seen:
-        groups[first_seen[key]].append(i)
+            if (other is not None and other[0] == sig[0]
+                    and first[4] == entry[4] and first[5] == entry[5]
+                    and shape_mismatch(other, sig) is None):
+                home = g
+                break
+    if home is not None:
+        groups[home].append(i)
         continue
-    if key is not None:
-        first_seen[key] = len(groups)
+    # A piece the size of one already seen that still gets a program of its
+    # own looks like a copy that failed to fold in, so INFO says what kept
+    # them apart -- the first such piece, whether it was the shape, the
+    # material or the grain.
+    if sig is not None:
+        for g, other in enumerate(shapes):
+            if other is None or _gap(other[1], sig[1]) > DUP_TOL:
+                continue
+            first = entries[groups[g][0]]
+            why = shape_mismatch(other, sig)
+            if why is None and first[4] != entry[4]:
+                why = ("it is cut from %s here and %s there"
+                       % (entry[4] or "no material given",
+                          first[4] or "no material given"))
+            elif why is None:
+                why = ("it is laid %s the grain here and %s it there"
+                       % ("along" if entry[5] else "across",
+                          "along" if first[5] else "across"))
+            elif first[4] != entry[4] or first[5] != entry[5]:
+                continue            # another shape and another board anyway
+            apart[len(groups)] = (g, why)
+            break
     groups.append([i])
+    shapes.append(sig)
 
 # Folding copies in must not eat the numbers of the pieces after them, so the
 # programs are numbered by group: one number per program, 0, 1, 2 ... with no
 # gaps. An ID wired on ID is the piece's own and is left alone.
+idents = []                         # per group, what its programs are named
 for g, members in enumerate(groups):
     entry = entries[members[0]]
     path, brep, ident = entry[0], entry[1], entry[2]
@@ -1829,6 +1988,7 @@ for g, members in enumerate(groups):
     number = g                      # which program this is, counting from zero
     if not explicit:
         ident = str(number)
+    idents.append(ident)
     try:
         setups = brep_to_setups(brep)
         for mark, part in setups:
@@ -1861,6 +2021,11 @@ for g, members in enumerate(groups):
                       GH_Path(0))
         except Exception:
             pass
+    if g in apart:
+        other, why = apart[g]
+        INFO.Add("%s   same size as %s but not folded into it: %s (DUP_TOL "
+                 "is %s mm)" % (ident, idents[other], why, fnum(DUP_TOL, 4)),
+                 path)
     for copy in copies:
         cpath, cqty = copy[0], copy[3]
         INFO.Add("%s   identical to %s - no program of its own, its x%s is in "

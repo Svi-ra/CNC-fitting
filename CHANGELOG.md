@@ -9,6 +9,54 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.11.0] — 2026-10-12
+
+`Tools/gh_brep2mpr.py` folds identical solids together reliably, and says
+why when two pieces of the same size stay apart.
+
+### Fixed
+
+- **Identical solids came out as separate programs.** Five copies of the
+  323 × 78 bent-facade piece (`pieces.3dm`) gave `0_…_1` and `1_…_4` —
+  byte-identical programs under two numbers. `geometry_key` rounded every
+  measurement to a `DUP_TOL` grid and compared the cells. The flat bottom of
+  each Ø4.5 side bore reports a bounding box 2.295 mm off the axis, so its
+  edge sits at Z = 6.705 — exactly half way between two cells on a 0.01 grid
+  — and one copy read 6.705000000000004 and fell into the next one. The
+  2.295 is 2.25 × 1.02, so every bore with a radius on a quarter millimetre
+  lands on a half step: this was systematic, not bad luck.
+
+### Changed
+
+- **Shapes are compared within `DUP_TOL`, as documented.** `geometry_key`
+  keeps raw measurements, and only the vertex count and the count of each
+  kind of face are compared exactly, to pick the candidates. The new
+  `shape_mismatch` pairs every vertex and face with its closest unused
+  counterpart — a bore's axis either way round — and each value may differ
+  by up to `DUP_TOL`. The pairing searches a sorted window, so 40 copies of
+  the test piece group in 0.1 s.
+
+### Added
+
+- `INFO` line for a piece that is the same size as an earlier one but still
+  gets a program of its own: `same size as 0 but not folded into it:`
+  followed by the material, the grain, the vertex and face counts, or the
+  one measurement that is out, with both values and the gap.
+
+### Verification
+
+Run in Rhino 8 through RhinoCode, with the component file executed unchanged
+on Breps imported into a headless document:
+
+- `pieces.3dm` (the five copies from the report): one program ×5 — before,
+  ×4 and ×1, matching the files produced in the field. `Pieces.dxf`: ×5.
+- A copy moved 1.2 m across the model and one stretched 0.003 mm fold in; a
+  copy stretched 0.03 mm and one mirrored end for end do not, the mirrored
+  one with a note naming the vertex that has no match.
+- The same solid in another material, or along the grain instead of across,
+  stays apart with a note saying so; the 3dm piece against its DXF
+  round-trip (22 faces against 31) is reported by its face counts.
+
 ## [0.10.0] — 2026-10-09
 
 `Tools/gh_brep2mpr.py` places each piece so the machine can hold it, drills

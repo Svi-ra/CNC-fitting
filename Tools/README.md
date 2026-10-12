@@ -400,7 +400,16 @@ axis of every cylindrical face, measure the same from the corner of their own
 bounding boxes, within `DUP_TOL`, **and** they carry the same material and the
 same grain direction — the very same shape cut from another board, or laid
 across the grain, is a piece of its own however well the solids match. Position is therefore irrelevant — copies
-laid out across a sheet still fold together. **Orientation is deliberately
+laid out across a sheet still fold together.
+
+"Within `DUP_TOL`" is meant literally: every vertex and every face of one
+solid is paired with its closest counterpart in the other, and each
+measurement may differ by up to `DUP_TOL`. Nothing is rounded to a
+`DUP_TOL` grid, because a grid splits copies that are identical. A value
+lying exactly on a half step — the flat bottom of a Ø4.5 bore reports
+6.705 on a 0.01 grid — lands in one cell or the next on floating-point noise
+alone (6.705 vs 6.705000000000004), and the copy comes out as a program of
+its own. **Orientation is deliberately
 not normalised:** a copy turned end for end carries its holes at the other end
 and is a genuinely different program, so it stays separate.
 
@@ -420,6 +429,16 @@ line saying which program covers it, and the surviving report names the copies
 folded in — including a note if they did not all carry the same `ID`. A copy
 that had no `ID` of its own has no number any more, so `INFO` points at it by
 where it sat in the input instead.
+
+A piece that is the same size as an earlier one and still gets a program of
+its own looks like a copy that failed to fold in, so `INFO` says what kept
+the two apart: the material, the grain, a different count of vertices or
+faces, or the one measurement that is out, with both values:
+
+```
+1   same size as 0 but not folded into it: the flat face 7 has its box min Z at 6.725 here, 6.705 there - 0.02 mm apart (DUP_TOL is 0.01 mm)
+1   same size as 0 but not folded into it: it is cut from oak here and base there (DUP_TOL is 0.01 mm)
+```
 
 ### Material, grain and the cut list
 
