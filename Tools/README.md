@@ -495,29 +495,28 @@ like `DIR` and `MAT`:
 | `BAND` | `"0011"`, `"1010"`, `"1000"` … — four characters, `1` = that side is banded. Wire it as **text**: `0011` wired as a number arrives as `11`. |
 | `PLN` | the part's own plane, lying in the panel. It says which way round the piece is, so the pattern can be read against it. |
 
-**How a pattern is read.** On the plane, starting from its lower-left corner —
-lowest X and lowest Y in the plane's own coordinates, which is where the
-origin sits on a panel drawn from its plane — and going **clockwise** as seen
-looking down the plane's Z axis:
+**How a pattern is read.** On the plane as seen looking down its Z axis — X
+to the right, Y away, Z up towards the viewer — starting from the **bottom**
+side and going **clockwise**:
 
 | Character | Side of the plane |
 | --- | --- |
-| 1 | left — the side along the plane's Y axis |
-| 2 | top |
-| 3 | right |
-| 4 | bottom — the side along the plane's X axis |
+| 1 | bottom — lowest Y, the side along the plane's X axis |
+| 2 | left — lowest X, the side along the plane's Y axis |
+| 3 | top — highest Y |
+| 4 | right — highest X |
 
 ```
-                 2  top
+                 3  top
              +-----------+
-    1 left   |           |   3 right        Y
+    2 left   |           |   4 right        Y
              o-----------+                  |
-          origin   4  bottom                o--X   (looking down Z)
+          origin   1  bottom                o--X   (looking down Z)
 ```
 
-So on the world XY plane, `1000` bands the side at X min, `0001` the side at
-Y min, and `0011` the X max and Y min sides. `BAND_SIDES` holds that order;
-reorder it to read the patterns another way.
+So on the world XY plane, `1000` bands the side at Y min, `0100` the side at
+X min, `0001` the side at X max, and `0011` the Y max and X max sides.
+`BAND_SIDES` holds that order; reorder it to read the patterns another way.
 
 Only the plane's **axes** are read, never its origin. A panel cut after its
 plane was set may no longer have the origin on its corner — or on it at all —
@@ -562,7 +561,7 @@ drilled from. `INFO` names them per setup:
 0   600 x 300 x 18 mm   x1   2 files
   F  face up                          1 x BohrVert, banding marked on the right edge
   B  turned over                      1 x BohrVert, banding marked on the right edge
-  note: banding 0010: the right side of the plane
+  note: banding 0001: the right side of the plane
 ```
 
 **The marks do not touch the machining.** They are worked out after the
@@ -652,7 +651,7 @@ the piece for the gripper — not milled.
 | `CONTOUR` | off | mill a shaped outline (`]1` + `<105 Konturfraesen>`); off while the machine has no router |
 | `GRIP` | on | place each setup so the gripping zones stay solid — see [Holding the piece](#holding-the-piece) |
 | `BM_THRU` | `"LSL"` | drill mode for through bores, written without `TI` |
-| `BAND_SIDES` | left, top, right, bottom | which side of the plane each character of a `BAND` pattern names — see [Edge banding](#edge-banding) |
+| `BAND_SIDES` | bottom, left, top, right | which side of the plane each character of a `BAND` pattern names — see [Edge banding](#edge-banding) |
 | `BAND_ANGLE_TOL` | 1.0 | how far, in degrees, a plane may sit off square with the panel and still be read |
 
 Which face ends up on top, and which way round, is **not** a setting: it is

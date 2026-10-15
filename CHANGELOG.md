@@ -9,6 +9,21 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.12.1] — 2026-10-15
+
+`Tools/gh_brep2mpr.py` reads `BAND` patterns in the shop's order.
+
+### Fixed
+
+- **Banding patterns are read bottom, left, top, right.** On the part's
+  plane seen down its Z axis (X right, Y away), clockwise from the bottom:
+  character 1 is the bottom side (lowest Y), 2 the left (lowest X), 3 the
+  top, 4 the right. 0.12.0 read them left, top, right, bottom, so every
+  pattern marked the wrong edges — `1000` the left side instead of the
+  bottom. `BAND_SIDES` now holds the new order; the directions of the sides
+  and everything after them are unchanged. **Patterns written for 0.12.0
+  need re-entering** — all of them but `0000` and `1111`.
+
 ## [0.12.0] — 2026-10-15
 
 `Tools/gh_brep2mpr.py` marks the banded edges of each piece on its programs,

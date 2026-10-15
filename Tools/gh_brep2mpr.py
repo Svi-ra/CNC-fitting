@@ -155,15 +155,14 @@ it in woodWOP. Both are plain lists, one item per part, like DIR and MAT:
     PLN   the part's own plane, lying in the panel: it says which way round
           the piece is, so the pattern can be read against it.
 
-The pattern is read on the plane, starting from its lower-left corner --
-lowest X and lowest Y in the plane's own coordinates, where the origin sits
-on a panel drawn from its plane -- and going clockwise as seen looking down
-the plane's Z axis:
+The pattern is read on the plane as seen looking down its Z axis -- X to
+the right, Y away, Z up towards the viewer -- starting from the bottom side
+and going clockwise:
 
-    character 1   the left side    the side along the plane's Y axis
-    character 2   the top side
-    character 3   the right side
-    character 4   the bottom side  the side along the plane's X axis
+    character 1   the bottom side  lowest Y, the side along the plane's X axis
+    character 2   the left side    lowest X, the side along the plane's Y axis
+    character 3   the top side     highest Y
+    character 4   the right side   highest X
 
 Each banded side becomes a graphic comment, <152 \Grafischer Kommentar\, on
 that edge of every program, all of them in one <121 \Block\ the way the
@@ -331,11 +330,11 @@ GRIP_WARN = 0.9      # ... is less solid than this
 # ---------------------------------------------------------------------------
 #
 # What each character of a BAND pattern names, in order: a side of the panel
-# as seen looking down its plane's Z axis. Clockwise from the lower-left
-# corner -- the plane's origin, on a panel drawn from its plane -- so the
-# first character is the side along the plane's Y axis and the last the side
-# along its X axis. Reorder to read the patterns another way.
-BAND_SIDES = ("left", "top", "right", "bottom")
+# as seen looking down its plane's Z axis -- X to the right, Y away, Z up
+# towards the viewer. Clockwise from the bottom, so the first character is
+# the side along the plane's X axis and the second the side along its Y
+# axis. Reorder to read the patterns another way.
+BAND_SIDES = ("bottom", "left", "top", "right")
 
 # Where the plane's sides point, in its own X and Y.
 SIDE_DIR = {"left": (-1.0, 0.0), "top": (0.0, 1.0),
