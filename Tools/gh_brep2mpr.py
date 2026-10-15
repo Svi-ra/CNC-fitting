@@ -12,6 +12,9 @@ Component setup
     input   QTY    int      access = Tree   how many of this piece, optional
     input   DIR    bool     access = List   grain direction per part, optional
     input   MAT    str      access = List   material per part, optional
+    input   BAND   str      access = List   edge banding per part, optional
+    input   PLN    Plane    access = List   each part's own plane, needed
+                                            wherever BAND bands an edge
     output  MPR    -                        one whole program per setup,
                                             line endings already embedded
     output  NAME   -                        the file name for each program
@@ -141,6 +144,41 @@ parts past its end fall back on those defaults -- and INFO says so.
 Both take part in the identical-panel test above: two solids of the same
 shape cut from different material, or with the grain the other way, are
 different pieces and each gets a program.
+
+Edge banding
+------------
+BAND and PLN say which edges of each piece are banded, so the operator sees
+it in woodWOP. Both are plain lists, one item per part, like DIR and MAT:
+
+    BAND  "0011", "1010", "1000" ... four characters, 1 = banded. Text, so a
+          leading zero survives: 0011 wired as a number arrives as 11.
+    PLN   the part's own plane, lying in the panel: it says which way round
+          the piece is, so the pattern can be read against it.
+
+The pattern is read on the plane, starting from its lower-left corner --
+lowest X and lowest Y in the plane's own coordinates, where the origin sits
+on a panel drawn from its plane -- and going clockwise as seen looking down
+the plane's Z axis:
+
+    character 1   the left side    the side along the plane's Y axis
+    character 2   the top side
+    character 3   the right side
+    character 4   the bottom side  the side along the plane's X axis
+
+Each banded side becomes a graphic comment, <152 \Grafischer Kommentar\, on
+that edge of every program, all of them in one <121 \Block\ the way the
+shop's existing programs carry them. The marks are carried through exactly
+the turns the bores are -- long side to X, turned over, end for end -- so
+whichever way the piece lies on the machine, the mark is on the edge that
+is banded. They are drawn only: nothing is machined, and nothing about the
+placement or the setups depends on them.
+
+A pattern that is not four 0s and 1s, a missing plane, or a plane that does
+not lie square with the panel gives no marks at all and a WARNING in INFO --
+no marks is safer than marks on the wrong edges. Only the plane's axes are
+read, never its origin: a panel cut after its plane was set may no longer
+have the origin on its corner, or on it at all. Two solids of the same
+shape whose banding differs are different pieces.
 
 The cut list
 ------------
@@ -288,6 +326,43 @@ GRIP_GRID = 4        # sample columns across a corner square (more = slower)
 GRIP_CHECK = 3       # INFO warns when one of the first this-many zones ...
 GRIP_WARN = 0.9      # ... is less solid than this
 
+# ---------------------------------------------------------------------------
+# edge banding marks
+# ---------------------------------------------------------------------------
+#
+# What each character of a BAND pattern names, in order: a side of the panel
+# as seen looking down its plane's Z axis. Clockwise from the lower-left
+# corner -- the plane's origin, on a panel drawn from its plane -- so the
+# first character is the side along the plane's Y axis and the last the side
+# along its X axis. Reorder to read the patterns another way.
+BAND_SIDES = ("left", "top", "right", "bottom")
+
+# Where the plane's sides point, in its own X and Y.
+SIDE_DIR = {"left": (-1.0, 0.0), "top": (0.0, 1.0),
+            "right": (1.0, 0.0), "bottom": (0.0, -1.0)}
+
+# How far, in degrees, the plane may sit off square with the panel -- its Z
+# off the thickness, its X off the panel's sides -- and still be read. Past
+# that, which side is meant is a guess, and no marks are written.
+BAND_ANGLE_TOL = 1.0
+
+# The marks, as the shop's existing programs draw them
+# (Examples/Banding/106F_476_340_1.MPR): the polygon _s0.ply in an 80 mm
+# square, blue, one per banded edge, in a <121 Block> named as below. Each
+# position is (share of _BSX or _BSY, plus mm) and is written as the same
+# expression, "_BSX/2-40" and so on, so it follows the panel size. The top
+# edge's -60, where the others keep 10 mm in from their edge, is copied as
+# found. The order is the order they are written in.
+BAND_PLY = "_s0.ply"
+BAND_SIZE = 80.0
+BAND_BLOCK = "Graphischer Kommentar Kante"
+BAND_MARKS = (
+    ("YP", (0.5, -40.0), (0.0, 10.0)),     # lower edge, Y = 0
+    ("YM", (0.5, -40.0), (1.0, -60.0)),    # top edge,   Y = BR
+    ("XP", (0.0, 10.0), (0.5, -40.0)),     # left edge,  X = 0
+    ("XM", (1.0, -90.0), (0.5, -40.0)),    # right edge, X = LA
+)
+
 DIA_TOL = 0.2       # a measured diameter counts as a listed one within this
 STRICT = True       # True: leave unreachable bores out and report them
                     # False: write them anyway, still reported
@@ -415,6 +490,7 @@ class Part(object):
         self.turned = False         # turned end for end on the machine
         self.macros = []            # (id, name, [(key, value), ...])
         self.contour = None         # [(kind, [(param, value), ...]), ...]
+        self.bands = []             # banded edges in this setup, BAND_MARKS keys
         self.notes = []
 
 
@@ -483,10 +559,45 @@ def mpr_lines(part):
             a('%s="%s"' % (k, v))
         a(SEP)
 
+    out.extend(band_lines(part.bands))
+
     while out and out[-1] == SEP:
         out.pop()               # '!' follows the last block directly
     a("!")
     a("")                       # so a join reproduces the trailing line end
+    return out
+
+
+def size_expr(var, share, mm):
+    """A mark position as woodWOP writes it: "10", "_BSX/2-40", "_BSY-60"."""
+    if share == 0:
+        return fnum(mm)
+    text = var if share == 1 else "%s/%s" % (var, fnum(1.0 / share))
+    if abs(mm) > 1e-9:
+        text += ("+" if mm > 0 else "-") + fnum(abs(mm))
+    return text
+
+
+def band_lines(bands):
+    """The banding marks: one <121 Block> holding a <152> per banded edge.
+
+    Laid out exactly as the shop's existing programs carry them -- no
+    separator line inside the block, DP counting the comments that belong
+    to it, and the last one followed directly by '!'.
+    """
+    marks = [m for m in BAND_MARKS if m[0] in bands]
+    if not marks:
+        return []
+    out = ["<121 \\Block\\", 'XP="0.0"', 'YP="0.0"', 'ZP="0.0"',
+           'NM="%s"' % BAND_BLOCK, 'DP="%d"' % len(marks)]
+    for _edge, (sx, mx), (sy, my) in marks:
+        out += ["<152 \\Grafischer Kommentar\\",
+                'NM="%s"' % BAND_PLY, 'LOCAL="0"', 'MD="0"',
+                'XA="%s"' % size_expr("_BSX", sx, mx),
+                'YA="%s"' % size_expr("_BSY", sy, my),
+                'BR="%s"' % fnum(BAND_SIZE), 'HE="%s"' % fnum(BAND_SIZE),
+                'WI="0"', 'ROT="0"', 'GRUEN="0"', 'BLAU="255"',
+                'STYLE="0"', 'WIDTH="1"']
     return out
 
 
@@ -721,8 +832,9 @@ def place(corners, holes, planars, notes):
     which edge is the top edge -- is left to the setup planner below. That is
     a machining decision, not a property of the model.
 
-    Returns the placed corners and a map from placed coordinates back to the
-    world, where the Brep itself still sits.
+    Returns the placed corners, a map from placed coordinates back to the
+    world, where the Brep itself still sits, and whether the part was given
+    the quarter turn rot_z90 -- directions such as a banded side's follow it.
     """
     turned = False
     if LONG_X:
@@ -744,7 +856,7 @@ def place(corners, holes, planars, notes):
         q = (p[0] + x0, p[1] + y0, p[2] + z0)
         return (-q[1], q[0], q[2]) if turned else q     # undoes rot_z90
 
-    return corners, to_world
+    return corners, to_world, turned
 
 
 # ---------------------------------------------------------------------------
@@ -1258,6 +1370,155 @@ def check_flat(lx, ly, lz, notes):
 
 
 # ---------------------------------------------------------------------------
+# edge banding
+# ---------------------------------------------------------------------------
+#
+# A banded side is carried as the way it faces -- (-1, 0) is the side at the
+# lowest X -- first in the world, then through the very turns the bores take:
+# rot_z90 if the part was turned long side to X, then the setup's own map.
+# Whichever way it then faces names the edge it is on in that program.
+
+EDGE_OF = {(-1, 0): "XP", (1, 0): "XM", (0, -1): "YP", (0, 1): "YM"}
+WORLD_SIDE = {(-1, 0): "-X", (1, 0): "+X", (0, -1): "-Y", (0, 1): "+Y"}
+
+
+def band_pattern(value):
+    """A BAND item -> (the BAND_SIDES it bands, why it cannot be read).
+
+    Nothing at all means no banding. Anything that is not exactly one 0 or 1
+    per side is refused rather than guessed at: a pattern that lost its
+    leading zeros on the way in -- 0011 wired as a number arrives as 11 --
+    would otherwise band the wrong edges.
+    """
+    if value is None:
+        return (), None
+    text = str(value).strip()
+    if not text:
+        return (), None
+    n = len(BAND_SIDES)
+    if len(text) == n and all(c in "01" for c in text):
+        return tuple(s for s, c in zip(BAND_SIDES, text) if c == "1"), None
+    why = "banding pattern %r is not %d characters of 0 and 1" % (text, n)
+    number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if number or (len(text) < n and all(c in "01" for c in text)):
+        why += (" - a pattern that came in as a number has lost its leading "
+                "zeros; wire BAND as text")
+    return None, why
+
+
+def side_list(names):
+    """Names run together for INFO: a, a and b, a, b and c."""
+    names = list(names)
+    if len(names) < 2:
+        return "".join(names)
+    return "%s and %s" % (", ".join(names[:-1]), names[-1])
+
+
+def band_world(sides, plane):
+    """The banded sides of the plane, as the ways they face in the world.
+
+    -> (frozenset of directions, None) or (None, why not). Only the plane's
+    axes are read: it has to lie in the panel and square with its sides,
+    or which side is meant is a guess. Its origin is not checked -- a panel
+    cut after its plane was set leaves the two apart, and that is fine.
+    """
+    if not sides:
+        return frozenset(), None
+    if plane is None:
+        return None, ("banded on the %s side%s but no plane on PLN to read "
+                      "it against" % (side_list(sides),
+                                      "" if len(sides) == 1 else "s"))
+    try:
+        xa, ya, za = (vnorm(p3(plane.XAxis)), vnorm(p3(plane.YAxis)),
+                      vnorm(p3(plane.ZAxis)))
+    except AttributeError:
+        return None, "the item on PLN is not a plane"
+
+    cos_tol = math.cos(math.radians(BAND_ANGLE_TOL))
+    if abs(za[2]) < cos_tol:
+        return None, ("the plane on PLN does not lie in the panel - its Z "
+                      "axis is %s deg off the panel's thickness"
+                      % fnum(math.degrees(math.acos(min(1.0, abs(za[2])))), 1))
+
+    out = set()
+    for side in sides:
+        u, v = SIDE_DIR[side]
+        w = vadd(vmul(xa, u), vmul(ya, v))
+        hit = [d for d in EDGE_OF if w[0] * d[0] + w[1] * d[1] >= cos_tol]
+        if not hit:
+            ang = math.degrees(math.atan2(xa[1], xa[0])) % 90.0
+            return None, ("the plane on PLN has its X axis %s deg off the "
+                          "panel's sides - which side is which is a guess"
+                          % fnum(min(ang, 90.0 - ang), 1))
+        out.add(hit[0])
+    return frozenset(out), None
+
+
+def same_bands(a, b):
+    """Two pieces banded alike -- on the same sides as they lie in the world.
+
+    Banding that could not be read matches nothing, not even another that
+    could not: folding it into a readable copy would give it marks it never
+    asked for.
+    """
+    return a is not None and b is not None and a == b
+
+
+def bands_text(bands):
+    """The banded sides as they face in the world, for INFO."""
+    if bands is None:
+        return "unreadably"
+    if not bands:
+        return "nowhere"
+    names = sorted(WORLD_SIDE[d] for d in bands)
+    return "on the %s side%s" % (side_list(names),
+                                 "" if len(names) == 1 else "s")
+
+
+def band_edges(bands, quarter, mark, turned):
+    """The banded sides as edges of one setup, in BAND_MARKS order.
+
+    `bands` face as in the world; `quarter` is whether place() gave the part
+    its quarter turn. The setup map is the one the bores go through, so the
+    marks and the bores cannot part company.
+    """
+    if not bands:
+        return []
+    _pt, vec = setup_maps(mark, 1.0, 1.0, 1.0, turned)
+    edges = set()
+    for dx, dy in bands:
+        d = (float(dx), float(dy), 0.0)
+        if quarter:
+            d = rot_z90(d)
+        d = vec(d)
+        edges.add(EDGE_OF[(int(round(d[0])), int(round(d[1])))])
+    return [m[0] for m in BAND_MARKS if m[0] in edges]
+
+
+def band_crowded(mark, edges, lx, ly, notes):
+    """Say so when a mark reaches past the middle of the panel.
+
+    There it may look as much like the opposite edge's mark as its own. The
+    position is taken as the lower-left corner of the BAND_SIZE square --
+    the reading under which the shop's marks sit evenly 10 mm in from three
+    of the edges.
+    """
+    s = BAND_SIZE
+    for edge, (sx, mx), (sy, my) in BAND_MARKS:
+        if edge not in edges:
+            continue
+        xa, ya = sx * lx + mx, sy * ly + my
+        crowded = {"YP": ya + s > ly / 2.0, "YM": ya < ly / 2.0,
+                   "XP": xa + s > lx / 2.0, "XM": xa < lx / 2.0}[edge]
+        if crowded:
+            notes.append("%s: the banding mark on the %s reaches past the "
+                         "middle of this %s mm panel - check in woodWOP that "
+                         "it reads as that edge's"
+                         % (mark, EDGE_NAME[edge],
+                            fnum(ly if edge[0] == "Y" else lx)))
+
+
+# ---------------------------------------------------------------------------
 # planning the setups
 # ---------------------------------------------------------------------------
 
@@ -1454,14 +1715,19 @@ def grip_notes(needed, able, grip, notes):
                     % (o[0], name, _where(u, v), int(round(share * 100))))
 
 
-def brep_to_setups(brep):
-    """One Brep -> [(mark, Part), ...]. Every Part carries the same notes."""
-    notes = []
+def brep_to_setups(brep, bands=None, notes=None):
+    """One Brep -> [(mark, Part), ...]. Every Part carries the same notes.
+
+    `bands` are the banded sides as they face in the world -- see
+    band_world. They are drawn on each setup once it is planned, and play
+    no part in planning it.
+    """
+    notes = list(notes or [])
     if brep is None or not brep.IsValid:
         raise ValueError("invalid Brep")
 
     corners, holes, planars = read_brep(brep, notes)
-    corners, to_world = place(corners, holes, planars, notes)
+    corners, to_world, quarter = place(corners, holes, planars, notes)
 
     x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
     lx, ly = x1 - x0, y1 - y0
@@ -1482,6 +1748,8 @@ def brep_to_setups(brep):
         part.lx, part.ly, part.lz = lx, ly, lz
         part.turned = turned
         part.notes = notes
+        part.bands = band_edges(bands, quarter, mark, turned)
+        band_crowded(mark, part.bands, lx, ly, notes)
         for feat, dia in work:
             m = macro(feat, dia, lz)
             if m is not None:
@@ -1753,6 +2021,9 @@ def describe(ident, qty, setups, copies=(), material="", along_grain=True):
                            for k, v in sorted(counts.items()))
         if part.contour:
             detail += (", " if detail else "") + "contour"
+        if part.bands:
+            detail += ((", " if detail else "") + "banding marked on the "
+                       + side_list(EDGE_NAME[e] for e in part.bands))
         lines.append("  %s  %-*s %s"
                      % (mark, width, ORIENT_NAME[(mark, part.turned)],
                         detail or "no machining"))
@@ -1869,6 +2140,14 @@ try:
     MAT
 except NameError:
     MAT = None
+try:
+    BAND
+except NameError:
+    BAND = None
+try:
+    PLN
+except NameError:
+    PLN = None
 
 MPR = DataTree[object]()
 NAME = DataTree[object]()
@@ -1880,12 +2159,15 @@ ids = SideInput(ID)
 qtys = SideInput(QTY)
 directions = column(DIR)
 materials = column(MAT)
+patterns = column(BAND)
+planes = column(PLN)
 taken = {}
 n = 0
 
 # Read the whole input first: identical solids have to be found before any of
 # them is converted, so the shape is only put through the planner once.
-# (path, brep, ident, qty, material, along_grain), in input order
+# (path, brep, ident, qty, material, along_grain, explicit, bands,
+#  band_notes), in input order
 entries = []
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
@@ -1908,14 +2190,36 @@ for path, items in branches_of(B):
         material = str(at(materials, n, "")).strip()
         along_grain = as_bool(at(directions, n, True), True)
 
+        # Banding: the sides of the part's plane, turned into the ways they
+        # face in the world. None when it cannot be read -- that part then
+        # gets no marks and a WARNING, never marks on a guessed edge.
+        pattern = at(patterns, n, None)
+        sides, why = band_pattern(pattern)
+        bands = None
+        if why is None:
+            try:
+                bands, why = band_world(sides, at(planes, n, None))
+            except Exception as exc:
+                why = "banding could not be read: %s" % exc
+        if why is not None:
+            band_notes = ["WARNING: %s - no banding marks written" % why]
+        elif sides:
+            band_notes = ["banding %s: the %s side%s of the plane"
+                          % (str(pattern).strip(), side_list(sides),
+                             "" if len(sides) == 1 else "s")]
+        else:
+            band_notes = []
+
         entries.append((path, brep, ident, qty, material, along_grain,
-                        explicit))
+                        explicit, bands, band_notes))
         n += 1
 
-# DIR and MAT run part for part with B. A list of another length still works
-# -- the parts past its end are along the grain with no material -- but it is
-# almost always a wiring mistake, so it is said out loud.
-for label, values in (("DIR", directions), ("MAT", materials)):
+# DIR, MAT, BAND and PLN run part for part with B. A list of another length
+# still works -- the parts past its end are along the grain, with no material
+# and no banding -- but it is almost always a wiring mistake, so it is said
+# out loud.
+for label, values in (("DIR", directions), ("MAT", materials),
+                      ("BAND", patterns), ("PLN", planes)):
     if values and len(values) != n:
         INFO.Add("WARNING: %d part%s but %d value%s on %s - %s takes one "
                  "value per part, in the same order"
@@ -1939,11 +2243,13 @@ for i, entry in enumerate(entries):
     if sig is not None:
         for g, other in enumerate(shapes):
             first = entries[groups[g][0]]
-            # Material and grain are part of what makes two pieces the same:
-            # the very same shape cut from another board, or turned across
-            # the grain, is a piece of its own however well the solids match.
+            # Material, grain and banding are part of what makes two pieces
+            # the same: the very same shape cut from another board, turned
+            # across the grain or banded on other edges, is a piece of its
+            # own however well the solids match.
             if (other is not None and other[0] == sig[0]
                     and first[4] == entry[4] and first[5] == entry[5]
+                    and same_bands(first[7], entry[7])
                     and shape_mismatch(other, sig) is None):
                 home = g
                 break
@@ -1953,7 +2259,7 @@ for i, entry in enumerate(entries):
     # A piece the size of one already seen that still gets a program of its
     # own looks like a copy that failed to fold in, so INFO says what kept
     # them apart -- the first such piece, whether it was the shape, the
-    # material or the grain.
+    # material, the grain or the banding.
     if sig is not None:
         for g, other in enumerate(shapes):
             if other is None or _gap(other[1], sig[1]) > DUP_TOL:
@@ -1964,12 +2270,16 @@ for i, entry in enumerate(entries):
                 why = ("it is cut from %s here and %s there"
                        % (entry[4] or "no material given",
                           first[4] or "no material given"))
-            elif why is None:
+            elif why is None and first[5] != entry[5]:
                 why = ("it is laid %s the grain here and %s it there"
                        % ("along" if entry[5] else "across",
                           "along" if first[5] else "across"))
-            elif first[4] != entry[4] or first[5] != entry[5]:
-                continue            # another shape and another board anyway
+            elif why is None:
+                why = ("it is banded %s here and %s there"
+                       % (bands_text(entry[7]), bands_text(first[7])))
+            elif (first[4] != entry[4] or first[5] != entry[5]
+                  or not same_bands(first[7], entry[7])):
+                continue            # another shape and another piece anyway
             apart[len(groups)] = (g, why)
             break
     groups.append([i])
@@ -1990,7 +2300,7 @@ for g, members in enumerate(groups):
         ident = str(number)
     idents.append(ident)
     try:
-        setups = brep_to_setups(brep)
+        setups = brep_to_setups(brep, entry[7], entry[8])
         for mark, part in setups:
             name = file_name(ident, part, mark, qty)
             if name in taken:

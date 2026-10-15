@@ -128,6 +128,8 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `QTY` | int | **Tree** | how many of this piece — optional |
 | input | `DIR` | bool | **List** | grain direction per part — optional |
 | input | `MAT` | str | **List** | material per part — optional |
+| input | `BAND` | str | **List** | edge banding per part, `"0011"` — optional |
+| input | `PLN` | Plane | **List** | each part's own plane — needed wherever `BAND` bands an edge |
 | output | `MPR` | — | | one whole program per setup, line endings embedded |
 | output | `NAME` | — | | the file name for each program |
 | output | `INFO` | — | | one report per part |
@@ -142,9 +144,10 @@ flat list in part order. With no `ID` the programs are simply numbered in the
 order they are written — `0`, `1`, `2` … — with no gaps, however many solids
 were folded together.
 
-`DIR` and `MAT` are different: they are plain lists as long as the list of
-parts, read straight through in the order the parts arrive on `B`. See
-[Material, grain and the cut list](#material-grain-and-the-cut-list).
+`DIR`, `MAT`, `BAND` and `PLN` are different: they are plain lists as long as
+the list of parts, read straight through in the order the parts arrive on
+`B`. See [Material, grain and the cut list](#material-grain-and-the-cut-list)
+and [Edge banding](#edge-banding).
 
 ### What the machine can reach
 
@@ -397,10 +400,14 @@ over its vertices rather than a full conversion.
 
 Two solids count as the same shape when their vertices, and the radius and
 axis of every cylindrical face, measure the same from the corner of their own
-bounding boxes, within `DUP_TOL`, **and** they carry the same material and the
-same grain direction — the very same shape cut from another board, or laid
-across the grain, is a piece of its own however well the solids match. Position is therefore irrelevant — copies
-laid out across a sheet still fold together.
+bounding boxes, within `DUP_TOL`, **and** they carry the same material, the
+same grain direction and the same banding — the very same shape cut from
+another board, laid across the grain or banded on other edges, is a piece of
+its own however well the solids match. Banding is compared on the sides of
+the solid as it lies, not on the pattern text, so two copies whose `1010`
+patterns are read against planes turned 180° apart band the same two sides
+and fold together. Position is therefore irrelevant — copies laid out across
+a sheet still fold together.
 
 "Within `DUP_TOL`" is meant literally: every vertex and every face of one
 solid is paired with its closest counterpart in the other, and each
@@ -432,12 +439,13 @@ where it sat in the input instead.
 
 A piece that is the same size as an earlier one and still gets a program of
 its own looks like a copy that failed to fold in, so `INFO` says what kept
-the two apart: the material, the grain, a different count of vertices or
-faces, or the one measurement that is out, with both values:
+the two apart: the material, the grain, the banding, a different count of
+vertices or faces, or the one measurement that is out, with both values:
 
 ```
 1   same size as 0 but not folded into it: the flat face 7 has its box min Z at 6.725 here, 6.705 there - 0.02 mm apart (DUP_TOL is 0.01 mm)
 1   same size as 0 but not folded into it: it is cut from oak here and base there (DUP_TOL is 0.01 mm)
+2   same size as 0 but not folded into it: it is banded on the -X side here and on the -X and +X sides there (DUP_TOL is 0.01 mm)
 ```
 
 ### Material, grain and the cut list
@@ -475,6 +483,115 @@ gets a line, sized from its bounding box, so nothing drops out of the list.
 `DIR` changes the cut list only, never the program: the machine has no notion
 of grain, so the sizes swap on the sheet while the holes stay exactly where
 the model put them.
+
+### Edge banding
+
+`BAND` and `PLN` say which edges of each piece are banded, so the operator
+sees it on the program in woodWOP. Both are plain lists, one item per part,
+like `DIR` and `MAT`:
+
+| Input | Meaning |
+| --- | --- |
+| `BAND` | `"0011"`, `"1010"`, `"1000"` … — four characters, `1` = that side is banded. Wire it as **text**: `0011` wired as a number arrives as `11`. |
+| `PLN` | the part's own plane, lying in the panel. It says which way round the piece is, so the pattern can be read against it. |
+
+**How a pattern is read.** On the plane, starting from its lower-left corner —
+lowest X and lowest Y in the plane's own coordinates, which is where the
+origin sits on a panel drawn from its plane — and going **clockwise** as seen
+looking down the plane's Z axis:
+
+| Character | Side of the plane |
+| --- | --- |
+| 1 | left — the side along the plane's Y axis |
+| 2 | top |
+| 3 | right |
+| 4 | bottom — the side along the plane's X axis |
+
+```
+                 2  top
+             +-----------+
+    1 left   |           |   3 right        Y
+             o-----------+                  |
+          origin   4  bottom                o--X   (looking down Z)
+```
+
+So on the world XY plane, `1000` bands the side at X min, `0001` the side at
+Y min, and `0011` the X max and Y min sides. `BAND_SIDES` holds that order;
+reorder it to read the patterns another way.
+
+Only the plane's **axes** are read, never its origin. A panel cut after its
+plane was set may no longer have the origin on its corner — or on it at all —
+and that does not matter: which side is which follows from the directions
+alone. A plane that is flipped (Z pointing down) is read as seen down its own
+Z, so it mirrors the order as it should.
+
+**What is written.** Each banded side becomes a graphic comment on its edge,
+`<152 \Grafischer Kommentar\`, all of them in one `<121 \Block\` — exactly
+as the shop's existing programs in `Examples/Banding/` carry them:
+
+```
+<121 \Block\
+XP="0.0"  YP="0.0"  ZP="0.0"  NM="Graphischer Kommentar Kante"  DP="2"
+<152 \Grafischer Kommentar\
+NM="_s0.ply"  LOCAL="0"  MD="0"  XA="_BSX/2-40"  YA="10"  BR="80"  HE="80" ...
+<152 \Grafischer Kommentar\
+NM="_s0.ply"  LOCAL="0"  MD="0"  XA="_BSX-90"  YA="_BSY/2-40"  BR="80"  HE="80" ...
+```
+
+| Edge in the program | `XA` | `YA` |
+| --- | --- | --- |
+| lower, Y = 0 | `_BSX/2-40` | `10` |
+| top, Y = BR | `_BSX/2-40` | `_BSY-60` |
+| left, X = 0 | `10` | `_BSY/2-40` |
+| right, X = LA | `_BSX-90` | `_BSY/2-40` |
+
+`DP` counts the comments in the block, the block has no separator lines
+inside it, and `!` follows the last comment directly — all as in the
+examples. The top edge's `_BSY-60`, where the other three sit 10 mm in from
+their edge, is copied as found. The positions, the polygon, its size and the
+block name are `BAND_MARKS`, `BAND_PLY`, `BAND_SIZE` and `BAND_BLOCK`.
+
+**The marks follow the piece.** A banded side is carried through exactly the
+turns the bores go through — the quarter turn that puts the long side on X,
+then the setup's own map: turned over, turned end for end, or both. So in
+each program of a two-setup piece the mark is on whichever edge the banded
+side is on *in that placement*, the same edge the bores beside it are
+drilled from. `INFO` names them per setup:
+
+```
+0   600 x 300 x 18 mm   x1   2 files
+  F  face up                          1 x BohrVert, banding marked on the right edge
+  B  turned over                      1 x BohrVert, banding marked on the right edge
+  note: banding 0010: the right side of the plane
+```
+
+**The marks do not touch the machining.** They are worked out after the
+setups are planned and are never among the macros, so the placement, the
+setups, the macros and the file names are exactly what they would be with
+`BAND` unwired. Nothing is cut; woodWOP only draws them.
+
+**Nothing is guessed.** A part gets no marks at all, and a `WARNING` in
+`INFO`, when:
+
+* the pattern is not four 0s and 1s — `11`, `10a0`, `10100`;
+* it bands a side but there is no plane for it on `PLN`;
+* the plane does not lie in the panel — its Z axis more than
+  `BAND_ANGLE_TOL` (1°) off the thickness;
+* the plane's X axis is more than `BAND_ANGLE_TOL` off the panel's sides, so
+  which side is meant would be a guess.
+
+No marks is safer than marks on the wrong edges. A part with no pattern, an
+empty one or `0000` simply has no marks, and needs no plane. A `BAND` or `PLN`
+list of the wrong length is read as far as it goes and reported, as `DIR`
+and `MAT` are.
+
+On a panel under about 180 mm across, an 80 mm mark reaches past the middle,
+where it may look as much like the opposite edge's mark as its own. `INFO`
+says so — check that piece in woodWOP.
+
+Because the origin is not read, a plane that belongs to another panel — or to
+this one where it stood in the assembly — is **not** caught if it happens to
+face the same way. Keep `BAND`, `PLN` and `B` in the same order.
 
 ### File names
 
@@ -535,12 +652,14 @@ the piece for the gripper — not milled.
 | `CONTOUR` | off | mill a shaped outline (`]1` + `<105 Konturfraesen>`); off while the machine has no router |
 | `GRIP` | on | place each setup so the gripping zones stay solid — see [Holding the piece](#holding-the-piece) |
 | `BM_THRU` | `"LSL"` | drill mode for through bores, written without `TI` |
+| `BAND_SIDES` | left, top, right, bottom | which side of the plane each character of a `BAND` pattern names — see [Edge banding](#edge-banding) |
+| `BAND_ANGLE_TOL` | 1.0 | how far, in degrees, a plane may sit off square with the panel and still be read |
 
 Which face ends up on top, and which way round, is **not** a setting: it is
 decided per part by the planner above, because it is a machining choice
 rather than a property of the model. The rest of the block is `SNAP`,
 `MAX_DIA`, `BM_VERT`, `BM_PUNCH`, `PUNCH_DEPTH`, `THICKNESS`, `GROOVE`,
-`GROOVE_MAX_WIDTH`, the `GRIP_…` sizes and `EOL`.
+`GROOVE_MAX_WIDTH`, the `GRIP_…` sizes, the `BAND_…` mark layout and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
 `open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason above.
@@ -686,6 +805,12 @@ not read or save local files.
   `GRIP_CORNER` and `GRIP_EDGE` are placeholders, and the "seen from the back"
   reading — right = X 0 — was confirmed on one piece. Check the first shaped
   part on the machine.
+* **The banding marks have not been checked on screen.** Their block is
+  copied from `Examples/Banding/`, but `_s0.ply` itself is not in the
+  repository, so how a mark looks — and whether the top edge's `_BSY-60`
+  sits where the others do — is unconfirmed. Open the first banded program
+  in woodWOP, a two-setup one included, and compare the marks with the
+  model.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.
 * Pockets modelled as solid cavities are **not** converted

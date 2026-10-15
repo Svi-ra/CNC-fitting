@@ -9,6 +9,70 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.12.0] — 2026-10-15
+
+`Tools/gh_brep2mpr.py` marks the banded edges of each piece on its programs,
+for the operator, and turns the marks with the piece.
+
+### Added
+
+- **Edge banding marks.** Two new inputs, both plain lists with one item per
+  part: `BAND`, a pattern such as `0011` (text, so leading zeros survive),
+  and `PLN`, the part's own plane. The pattern is read on the plane from its
+  lower-left corner, clockwise looking down its Z axis: left (along the
+  plane's Y), top, right, bottom (along its X). `BAND_SIDES` holds that order.
+  Only the plane's axes are read — its origin may be anywhere, so a panel cut
+  after its plane was set still reads correctly.
+- Each banded edge is written as `<152 \Grafischer Kommentar\` (`_s0.ply`,
+  80 × 80, blue) inside one `<121 \Block\` named
+  `Graphischer Kommentar Kante`, at the positions and in the layout of the
+  shop's own programs: `_BSX/2-40`/`10`, `_BSX/2-40`/`_BSY-60`,
+  `10`/`_BSY/2-40`, `_BSX-90`/`_BSY/2-40`, `DP` counting the marks, no
+  separator lines inside the block. New settings `BAND_SIDES`,
+  `BAND_ANGLE_TOL = 1.0`, `BAND_MARKS`, `BAND_PLY`, `BAND_SIZE`,
+  `BAND_BLOCK`.
+- `Examples/Banding/` — three of those shop programs, the reference for the
+  block.
+- `INFO` names the banded edges of every setup, and how the pattern was
+  read.
+
+### Changed
+
+- **The marks follow the piece through every setup.** A banded side is
+  carried through the same quarter turn and the same setup map as the bores,
+  so on a two-setup piece each program marks the edge that is banded in that
+  placement. The marks are added after the setups are planned and are not
+  among the macros: placement, setups, macros and file names are the same as
+  with `BAND` unwired.
+- **Banding is part of what makes two pieces the same.** Copies of one shape
+  banded on different sides of the solid stay separate programs, and `INFO`
+  says that the banding kept them apart. The comparison is by side of the
+  solid, not by pattern text, so `1010` read against two planes turned 180°
+  apart is the same piece.
+- `place()` also returns whether it gave the part the quarter turn, and
+  `brep_to_setups()` takes the banded sides and the part's notes.
+
+### Refused rather than guessed
+
+- No marks, and a `WARNING` in `INFO`, for a pattern that is not four 0s and
+  1s (`11` — a pattern wired as a number — gets a note that its leading zeros
+  were lost), for banding with no plane, and for a plane more than
+  `BAND_ANGLE_TOL` out of the panel or off square with its sides.
+- A note when a mark reaches past the middle of a panel narrower than about
+  180 mm, where it may read as the opposite edge's.
+- A `BAND` or `PLN` list of the wrong length is reported, as `DIR` and `MAT`
+  are.
+
+### Verification
+
+- Not yet run. The component parses; a Rhino test over 192 generated
+  panels, with a marker bore beside each banded side, was stopped before it
+  reported, and the user is testing by hand. The first banded programs —
+  including one that splits into `F` and `B` — should be opened in woodWOP
+  and checked against the model.
+- `_s0.ply` is not in the repository, so the look of a mark and the top
+  edge's `_BSY-60`, copied as found, are unconfirmed.
+
 ## [0.11.0] — 2026-10-12
 
 `Tools/gh_brep2mpr.py` folds identical solids together reliably, and says

@@ -19,6 +19,7 @@ CNC-fitting/
 ├─ MANIFEST.md                this file
 ├─ Docs/                      format references (2 files)
 ├─ Examples/                  CAD sources, reference programs, output
+│  ├─ Banding/                shop programs carrying edge-banding marks
 │  ├─ CAD-models/             the DXF/DWG sources
 │  │  └─ MPR/                 converter output (generated)
 │  ├─ Grasshopper/            the parametric model the DXFs come from
@@ -120,6 +121,29 @@ and settled three things the format spec does not say plainly:
 The two files disagree on the groove's section — the model has 4 mm wide × 9
 deep, the program says 8 × 7. Position, run and side agree.
 
+### `Examples/Banding/` — the edge-banding reference
+
+Three shop programs from the CAD system the shop already uses — not woodWOP's
+own saves — and the **only ground truth for the banding marks**:
+
+| File | Panel | Banding |
+| --- | --- | --- |
+| `106F_476_340_1.MPR` | 476 × 340 × 18, 4 `BohrVert`, 8 `BohrHoriz` | all four edges |
+| `85F_758_597_1.MPR` | 758 × 597 × 18, 4 `BohrVert` | all four edges |
+| `2F_731_600_1.MPR` | 730.6 × 600 × 38, shaped outline, no machining | none |
+
+A banded edge is a `<152 \Grafischer Kommentar\` drawing `_s0.ply` in an
+80 mm square near that edge, all of them in one `<121 \Block\` named
+`Graphischer Kommentar Kante` at the end of the program. `DP` counts them,
+there are no separator lines inside the block, and the positions are written
+as expressions of `_BSX`/`_BSY`. The unbanded panel has no block at all.
+`Tools/gh_brep2mpr.py` writes this block exactly.
+
+Each file also has a `<101 \Kommentar\` naming the edges `L1`, `L2`, `W1`,
+`W2` with their edge band (`ABS 7045 0,5/22`); its Cyrillic text was lost to
+`?` on export. The polygon `_s0.ply` itself is not in the repository. These
+files have single CRLF line endings.
+
 ### `Examples/Grasshopper/`
 
 `Noptiera ND01xx_test_suruburi.gh` — the parametric definition the DXF exports
@@ -132,7 +156,7 @@ the Ø8 blind holes are dowels).
 | --- | --- |
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, groove width and run, contour references. |
-| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over, either of them possibly turned end for end — when one clamping cannot reach everything. Places each setup so a cut corner, rebate or pocket stays out of the gripper's ranked zones, even at the cost of a second setup. Writes boring and sawing only; a shaped outline is reported, not milled. Solids of the same shape, material and grain are converted once, their quantities added up into the file name; a cut list comes out beside the programs. |
+| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over, either of them possibly turned end for end — when one clamping cannot reach everything. Places each setup so a cut corner, rebate or pocket stays out of the gripper's ranked zones, even at the cost of a second setup. Writes boring and sawing only; a shaped outline is reported, not milled. Solids of the same shape, material, grain and banding are converted once, their quantities added up into the file name; a cut list comes out beside the programs. Edge banding, given as a pattern per part read clockwise on the part's own plane, is drawn as graphic comments on the banded edges of every setup, turned with the piece as its bores are. |
 | `Tools/gh_name2zpl.py` | Grasshopper Script component (Rhino 8, Python 3): panel names in, Code 128 labels out as one ZPL text, ready to save and send to the printer as bytes. Writes no file itself, so it passes ShapeDiver's review. Wired downstream of `gh_brep2mpr.py`'s `NAME`. Barcodes are `^BC`, the printer's own Code 128; the component lays the label out, sizes the bars to the stock and reports a name that will not fit or cannot be encoded. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |

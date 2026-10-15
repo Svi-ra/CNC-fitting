@@ -1,0 +1,173 @@
+[H
+VERSION="4.0 Alpha"
+INCH="0"
+OP="0"
+FM="1"
+FW="700"
+VIEW="NOMIRROR"
+_BSX=758.000000
+_BSY=597.000000
+_BSZ=18.000000
+ 
+]1
+$E0
+KP
+X=0.0000
+Y=0.0000
+Z=0
+KO=0
+ 
+$E1
+KL
+X=758.0000
+Y=0.0000
+ 
+$E2
+KL
+X=758.0000
+Y=597.0000
+ 
+$E3
+KL
+X=0.0000
+Y=597.0000
+ 
+$E4
+KL
+X=0.0000
+Y=0.0000
+ 
+<100 \WerkStck\
+LA="758"
+BR="597"
+DI="18"
+FNX="0"
+FNY="0"
+AX="0"
+AY="0"
+ 
+<101 \Kommentar\
+KM="758 x 597 x 18"
+KM=""
+KM="??????? ?????"
+KM="4.?????"
+KM=" "
+KM="?????????? ? ???????: 1 ??"
+KM=" "
+KM="?????????:"
+KM=" ?????(L1) - ABS 7045 0,5/22"
+KM=" ??????(L2) - ABS 7045 0,5/22"
+KM=" ?????(W1) - ABS 7045 0,5/22"
+KM=" ??????(W2) - ABS 7045 0,5/22"
+ 
+<102 \BohrVert\
+XA="35"
+YA="562"
+TI="18"
+DU="5"
+BM="LSL"
+S_="1"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="227"
+YA="562"
+TI="18"
+DU="5"
+BM="LSL"
+S_="1"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="157"
+YA="22.5"
+TI="14"
+DU="35"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<102 \BohrVert\
+XA="658"
+YA="22.5"
+TI="14"
+DU="35"
+BM="LS"
+S_="2"
+AN="1"
+AB="0"
+WI="0"
+ 
+<121 \Block\
+XP="0.0"
+YP="0.0"
+ZP="0.0"
+NM="Graphischer Kommentar Kante"
+DP="4"
+
+<152 \Grafischer Kommentar\
+NM="_s0.ply"
+LOCAL="0"
+MD="0"
+XA="_BSX/2-40"
+YA="10"
+BR="80"
+HE="80"
+WI="0"
+ROT="0"
+GRUEN="0"
+BLAU="255"
+STYLE="0"
+WIDTH="1"
+
+<152 \Grafischer Kommentar\
+NM="_s0.ply"
+LOCAL="0"
+MD="0"
+XA="_BSX/2-40"
+YA="_BSY-60"
+BR="80"
+HE="80"
+WI="0"
+ROT="0"
+GRUEN="0"
+BLAU="255"
+STYLE="0"
+WIDTH="1"
+
+<152 \Grafischer Kommentar\
+NM="_s0.ply"
+LOCAL="0"
+MD="0"
+XA="10"
+YA="_BSY/2-40"
+BR="80"
+HE="80"
+WI="0"
+ROT="0"
+GRUEN="0"
+BLAU="255"
+STYLE="0"
+WIDTH="1"
+
+<152 \Grafischer Kommentar\
+NM="_s0.ply"
+LOCAL="0"
+MD="0"
+XA="_BSX-90"
+YA="_BSY/2-40"
+BR="80"
+HE="80"
+WI="0"
+ROT="0"
+GRUEN="0"
+BLAU="255"
+STYLE="0"
+WIDTH="1"
+!
