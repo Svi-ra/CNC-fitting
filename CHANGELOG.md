@@ -9,6 +9,41 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.12.2] — 2026-10-15
+
+`Tools/gh_brep2mpr.py` draws the banding marks as woodWOP draws them.
+
+### Changed
+
+- **A banded edge is now a blue line just outside it.** Each mark is
+  `_hline1.ply`, 10 mm thick (`WIDTH="10"`), 10 mm outside its edge and the
+  edge's full length, in place of the 80 mm `_s0.ply` square near it. The
+  layout is copied field for field from a woodWOP 9.0.152 save,
+  `Examples/Banding/0_330x163-B_1_banding-correct.mpr`: the line is carried
+  in the comment (`LOCAL="1"`, `STARTLOCAL … ENDLOCAL`), so woodWOP needs no
+  polygon file; `BR` is twice the edge and `HE` is `0`; the positions are
+  plain numbers, the far ones written as a sum (`330+10`); each comment is
+  named `Banding lower`, `left`, `upper` or `right`; and the block and its
+  comments carry woodWOP's `AX`…`KO` fields, `ORI` numbering on from the
+  macros and a separator line after each. Marks are written lower, left,
+  upper, right. The upper edge is not in any example and is the lower one
+  mirrored.
+- Settings: `BAND_SIZE` is gone; `BAND_WIDTH = 10.0`, `BAND_GAP = 10.0` and
+  `BAND_LOCAL` are new, and `BAND_MARKS` holds each edge's `MNM`, corner,
+  run and angle.
+
+### Removed
+
+- The `INFO` note that a mark reaches past the middle of a small panel — a
+  line along the edge cannot.
+
+### Added
+
+- `Examples/Banding/0_330x163-B_1_banding-correct.mpr`, the reference; the
+  same part as written before the fix, `…-wrong.mpr`; and
+  `6_290x114-F_1_banding.mpr`, an earlier layout with the lines inside the
+  panel.
+
 ## [0.12.1] — 2026-10-15
 
 `Tools/gh_brep2mpr.py` reads `BAND` patterns in the shop's order.

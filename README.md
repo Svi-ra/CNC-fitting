@@ -82,7 +82,7 @@ component also returns the cut list, `Material;ID;Lungime;Latime;Cantitate`.
 
 Edge banding comes in the same way: a pattern per part (`0011`, `1010` …,
 read clockwise on the part's own plane) becomes a graphic comment on each
-banded edge, drawn the way the shop's existing programs draw it. The marks
+banded edge, a blue line just outside it, as woodWOP draws it. The marks
 are turned with the piece exactly as its bores are, so in every setup they
 sit on the edge that is really banded, and they change nothing that is
 machined.

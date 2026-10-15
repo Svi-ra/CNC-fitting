@@ -524,31 +524,45 @@ and that does not matter: which side is which follows from the directions
 alone. A plane that is flipped (Z pointing down) is read as seen down its own
 Z, so it mirrors the order as it should.
 
-**What is written.** Each banded side becomes a graphic comment on its edge,
-`<152 \Grafischer Kommentar\`, all of them in one `<121 \Block\` — exactly
-as the shop's existing programs in `Examples/Banding/` carry them:
+**What is written.** Each banded side becomes a blue line, 10 mm thick, set
+10 mm outside its edge and running the edge's full length — a graphic
+comment, `<152 \Grafischer Kommentar\`, all of them in one `<121 \Block\`,
+exactly as woodWOP writes them in
+`Examples/Banding/0_330x163-B_1_banding-correct.mpr`:
 
 ```
 <121 \Block\
-XP="0.0"  YP="0.0"  ZP="0.0"  NM="Graphischer Kommentar Kante"  DP="2"
+XP="0.0"  YP="0.0"  ZP="0.0"  AX="1"  AY="1" ... ORI="17"
+NM="Graphischer Kommentar Kante"  DP="3"  KO="00"
+
 <152 \Grafischer Kommentar\
-NM="_s0.ply"  LOCAL="0"  MD="0"  XA="_BSX/2-40"  YA="10"  BR="80"  HE="80" ...
-<152 \Grafischer Kommentar\
-NM="_s0.ply"  LOCAL="0"  MD="0"  XA="_BSX-90"  YA="_BSY/2-40"  BR="80"  HE="80" ...
+NM="_hline1.ply"  LOCAL="1"  MD="0"  XA="0"  YA="-10"  BR="660"  HE="0"
+WI="0" ... WIDTH="10" ... MNM="Banding lower"  ORI="18"
+STARTLOCAL
+SIZE X2.0000 Y1.0000
+...
+ENDLOCAL
+KO="00"
 ```
 
-| Edge in the program | `XA` | `YA` |
-| --- | --- | --- |
-| lower, Y = 0 | `_BSX/2-40` | `10` |
-| top, Y = BR | `_BSX/2-40` | `_BSY-60` |
-| left, X = 0 | `10` | `_BSY/2-40` |
-| right, X = LA | `_BSX-90` | `_BSY/2-40` |
+| Edge in the program | `MNM` | `XA` | `YA` | `BR` | `WI` |
+| --- | --- | --- | --- | --- | --- |
+| lower, Y = 0 | `Banding lower` | `0` | `-10` | 2 × LA | 0 |
+| left, X = 0 | `Banding left` | `-10` | `0` | 2 × BR | 90 |
+| upper, Y = BR | `Banding upper` | `0` | BR`+10` | 2 × LA | 0 |
+| right, X = LA | `Banding right` | LA`+10` | `0` | 2 × BR | 90 |
 
-`DP` counts the comments in the block, the block has no separator lines
-inside it, and `!` follows the last comment directly — all as in the
-examples. The top edge's `_BSY-60`, where the other three sit 10 mm in from
-their edge, is copied as found. The positions, the polygon, its size and the
-block name are `BAND_MARKS`, `BAND_PLY`, `BAND_SIZE` and `BAND_BLOCK`.
+The positions are plain numbers worked out from the panel size, the far
+ones written as a sum — `330+10` — as woodWOP's file has them. The line,
+`_hline1.ply`, is carried inside each comment (`LOCAL="1"`,
+`STARTLOCAL … ENDLOCAL`), so woodWOP needs no polygon file for it. It inks
+only the second half of its 2 × 1 box, which is why `BR` is twice the edge.
+`HE` is `0` and the thickness is `WIDTH`. `DP` counts the comments, `ORI`
+numbers on from the macros before the block, and `!` follows the last
+comment directly. The upper edge is not in any example; it is the lower one
+mirrored, as left and right are. The layout, the line, its thickness, the
+gap and the block name are `BAND_MARKS`, `BAND_PLY`, `BAND_WIDTH`,
+`BAND_GAP`, `BAND_LOCAL` and `BAND_BLOCK`.
 
 **The marks follow the piece.** A banded side is carried through exactly the
 turns the bores go through — the quarter turn that puts the long side on X,
@@ -804,11 +818,10 @@ not read or save local files.
   `GRIP_CORNER` and `GRIP_EDGE` are placeholders, and the "seen from the back"
   reading — right = X 0 — was confirmed on one piece. Check the first shaped
   part on the machine.
-* **The banding marks have not been checked on screen.** Their block is
-  copied from `Examples/Banding/`, but `_s0.ply` itself is not in the
-  repository, so how a mark looks — and whether the top edge's `_BSY-60`
-  sits where the others do — is unconfirmed. Open the first banded program
-  in woodWOP, a two-setup one included, and compare the marks with the
+* **The upper banding mark has not been checked on screen.** The lower,
+  left and right marks are woodWOP's own, checked on screen; the upper one
+  is the lower one mirrored, `YA` = BR`+10`, and no example has it. Open the
+  first program banded on that edge in woodWOP and compare it with the
   model.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.

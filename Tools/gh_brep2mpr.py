@@ -165,8 +165,9 @@ and going clockwise:
     character 4   the right side   highest X
 
 Each banded side becomes a graphic comment, <152 \Grafischer Kommentar\, on
-that edge of every program, all of them in one <121 \Block\ the way the
-shop's existing programs carry them. The marks are carried through exactly
+that edge of every program -- a blue line just outside it, its full length
+-- all of them in one <121 \Block\ the way woodWOP writes them. The marks
+are carried through exactly
 the turns the bores are -- long side to X, turned over, end for end -- so
 whichever way the piece lies on the machine, the mark is on the edge that
 is banded. They are drawn only: nothing is machined, and nothing about the
@@ -345,22 +346,31 @@ SIDE_DIR = {"left": (-1.0, 0.0), "top": (0.0, 1.0),
 # that, which side is meant is a guess, and no marks are written.
 BAND_ANGLE_TOL = 1.0
 
-# The marks, as the shop's existing programs draw them
-# (Examples/Banding/106F_476_340_1.MPR): the polygon _s0.ply in an 80 mm
-# square, blue, one per banded edge, in a <121 Block> named as below. Each
-# position is (share of _BSX or _BSY, plus mm) and is written as the same
-# expression, "_BSX/2-40" and so on, so it follows the panel size. The top
-# edge's -60, where the others keep 10 mm in from their edge, is copied as
-# found. The order is the order they are written in.
-BAND_PLY = "_s0.ply"
-BAND_SIZE = 80.0
+# The marks, as woodWOP draws them in Examples/Banding/
+# 0_330x163-B_1_banding-correct.mpr: a blue line BAND_WIDTH mm thick along
+# each banded edge, BAND_GAP mm outside the panel, in a <121 Block> named as
+# below. The line is the polygon _hline1.ply, carried in the comment itself
+# (LOCAL="1", BAND_LOCAL) so woodWOP needs no file for it. It inks only the
+# second half of its 2 x 1 box, which starts at XA/YA -- so BR is twice the
+# edge, and the line runs from the corner the full length of the edge.
+# Each mark is (edge, MNM, its corner as (share of LA, plus mm) and (share
+# of BR, plus mm), the axis it runs along, WI). A corner past the far edge
+# is written as woodWOP's example has it, "330+10". The order is the order
+# they are written in. The upper edge is not in the examples; it is the
+# lower one mirrored, as left and right are.
+BAND_PLY = "_hline1.ply"
+BAND_WIDTH = 10.0
+BAND_GAP = 10.0
 BAND_BLOCK = "Graphischer Kommentar Kante"
 BAND_MARKS = (
-    ("YP", (0.5, -40.0), (0.0, 10.0)),     # lower edge, Y = 0
-    ("YM", (0.5, -40.0), (1.0, -60.0)),    # top edge,   Y = BR
-    ("XP", (0.0, 10.0), (0.5, -40.0)),     # left edge,  X = 0
-    ("XM", (1.0, -90.0), (0.5, -40.0)),    # right edge, X = LA
+    ("YP", "Banding lower", (0, 0.0), (0, -BAND_GAP), "X", 0),   # Y = 0
+    ("XP", "Banding left", (0, -BAND_GAP), (0, 0.0), "Y", 90),   # X = 0
+    ("YM", "Banding upper", (0, 0.0), (1, BAND_GAP), "X", 0),    # Y = BR
+    ("XM", "Banding right", (1, BAND_GAP), (0, 0.0), "Y", 90),   # X = LA
 )
+BAND_LOCAL = ("STARTLOCAL", "SIZE X2.0000 Y1.0000", "SPINDLE X0.0000 Y0.0000",
+              "U", "X0.0000 Y0.5000 ", "X1.0000 Y0.5000 ", "D",
+              "X2.0000 Y0.5000 ", "ENDLOCAL")
 
 DIA_TOL = 0.2       # a measured diameter counts as a listed one within this
 STRICT = True       # True: leave unreachable bores out and report them
@@ -558,7 +568,7 @@ def mpr_lines(part):
             a('%s="%s"' % (k, v))
         a(SEP)
 
-    out.extend(band_lines(part.bands))
+    out.extend(band_lines(part))
 
     while out and out[-1] == SEP:
         out.pop()               # '!' follows the last block directly
@@ -567,36 +577,48 @@ def mpr_lines(part):
     return out
 
 
-def size_expr(var, share, mm):
-    """A mark position as woodWOP writes it: "10", "_BSX/2-40", "_BSY-60"."""
-    if share == 0:
+def band_pos(pos, size):
+    """A mark corner as woodWOP's example writes it: "0", "-10", "330+10"."""
+    share, mm = pos
+    if not share:
         return fnum(mm)
-    text = var if share == 1 else "%s/%s" % (var, fnum(1.0 / share))
+    text = fnum(share * size)
     if abs(mm) > 1e-9:
         text += ("+" if mm > 0 else "-") + fnum(abs(mm))
     return text
 
 
-def band_lines(bands):
+def band_lines(part):
     """The banding marks: one <121 Block> holding a <152> per banded edge.
 
-    Laid out exactly as the shop's existing programs carry them -- no
-    separator line inside the block, DP counting the comments that belong
-    to it, and the last one followed directly by '!'.
+    Laid out exactly as woodWOP writes them -- DP counting the comments
+    that belong to the block, ORI numbering on from the macros before it,
+    and the last comment followed directly by '!'.
     """
-    marks = [m for m in BAND_MARKS if m[0] in bands]
+    marks = [m for m in BAND_MARKS if m[0] in part.bands]
     if not marks:
         return []
+    ori = len(part.macros) + (2 if part.contour else 1)
     out = ["<121 \\Block\\", 'XP="0.0"', 'YP="0.0"', 'ZP="0.0"',
-           'NM="%s"' % BAND_BLOCK, 'DP="%d"' % len(marks)]
-    for _edge, (sx, mx), (sy, my) in marks:
+           'AX="1"', 'AY="1"', 'RX="0.0"', 'RY="0.0"', 'CS="0"', 'OC="0"',
+           'KAT="BlockMakro"', 'MNM="BlockMakro"', 'ORI="%d"' % ori,
+           'NM="%s"' % BAND_BLOCK, 'DP="%d"' % len(marks), 'KO="00"', SEP]
+    for _edge, name, xa, ya, along, angle in marks:
+        ori += 1
         out += ["<152 \\Grafischer Kommentar\\",
-                'NM="%s"' % BAND_PLY, 'LOCAL="0"', 'MD="0"',
-                'XA="%s"' % size_expr("_BSX", sx, mx),
-                'YA="%s"' % size_expr("_BSY", sy, my),
-                'BR="%s"' % fnum(BAND_SIZE), 'HE="%s"' % fnum(BAND_SIZE),
-                'WI="0"', 'ROT="0"', 'GRUEN="0"', 'BLAU="255"',
-                'STYLE="0"', 'WIDTH="1"']
+                'NM="%s"' % BAND_PLY, 'LOCAL="1"', 'MD="0"',
+                'XA="%s"' % band_pos(xa, part.lx),
+                'YA="%s"' % band_pos(ya, part.ly),
+                'BR="%s"' % fnum(2 * (part.lx if along == "X" else part.ly)),
+                'HE="0"',
+                'WI="%d"' % angle, 'ROT="0"', 'GRUEN="0"', 'BLAU="255"',
+                'STYLE="0"', 'WIDTH="%s"' % fnum(BAND_WIDTH),
+                'WW7TMODE="0"', 'TFONT="OLF ModernOC"', 'TSIZE="24"',
+                'TSTYLE="0"', 'TVSPACE="0"', 'THALIGN="1"', 'TDISTCHAR="0"',
+                'KAT="Grafischer Kommentar"', 'MNM="%s"' % name,
+                'ORI="%d"' % ori]
+        out += BAND_LOCAL
+        out += ['KO="00"', SEP]
     return out
 
 
@@ -1494,29 +1516,6 @@ def band_edges(bands, quarter, mark, turned):
     return [m[0] for m in BAND_MARKS if m[0] in edges]
 
 
-def band_crowded(mark, edges, lx, ly, notes):
-    """Say so when a mark reaches past the middle of the panel.
-
-    There it may look as much like the opposite edge's mark as its own. The
-    position is taken as the lower-left corner of the BAND_SIZE square --
-    the reading under which the shop's marks sit evenly 10 mm in from three
-    of the edges.
-    """
-    s = BAND_SIZE
-    for edge, (sx, mx), (sy, my) in BAND_MARKS:
-        if edge not in edges:
-            continue
-        xa, ya = sx * lx + mx, sy * ly + my
-        crowded = {"YP": ya + s > ly / 2.0, "YM": ya < ly / 2.0,
-                   "XP": xa + s > lx / 2.0, "XM": xa < lx / 2.0}[edge]
-        if crowded:
-            notes.append("%s: the banding mark on the %s reaches past the "
-                         "middle of this %s mm panel - check in woodWOP that "
-                         "it reads as that edge's"
-                         % (mark, EDGE_NAME[edge],
-                            fnum(ly if edge[0] == "Y" else lx)))
-
-
 # ---------------------------------------------------------------------------
 # planning the setups
 # ---------------------------------------------------------------------------
@@ -1748,7 +1747,6 @@ def brep_to_setups(brep, bands=None, notes=None):
         part.turned = turned
         part.notes = notes
         part.bands = band_edges(bands, quarter, mark, turned)
-        band_crowded(mark, part.bands, lx, ly, notes)
         for feat, dia in work:
             m = macro(feat, dia, lz)
             if m is not None:

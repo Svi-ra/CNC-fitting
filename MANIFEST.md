@@ -123,26 +123,37 @@ deep, the program says 8 × 7. Position, run and side agree.
 
 ### `Examples/Banding/` — the edge-banding reference
 
-Three shop programs from the CAD system the shop already uses — not woodWOP's
-own saves — and the **only ground truth for the banding marks**:
+Three shop programs from the CAD system the shop already uses, and three
+woodWOP 9.0.152 saves that are the **ground truth for the banding marks**
+`Tools/gh_brep2mpr.py` writes:
 
 | File | Panel | Banding |
 | --- | --- | --- |
-| `106F_476_340_1.MPR` | 476 × 340 × 18, 4 `BohrVert`, 8 `BohrHoriz` | all four edges |
-| `85F_758_597_1.MPR` | 758 × 597 × 18, 4 `BohrVert` | all four edges |
-| `2F_731_600_1.MPR` | 730.6 × 600 × 38, shaped outline, no machining | none |
+| `0_330x163-B_1_banding-correct.mpr` | 330 × 163 × 18, 12 `BohrVert`, 4 `BohrHoriz` | lower, left, right — **the reference** |
+| `0_330x163-B_1_banding-wrong.mpr` | the same part as `gh_brep2mpr.py` wrote it before the fix | marks 10 mm inside the edges |
+| `6_290x114-F_1_banding.mpr` | 290 × 114 × 18, 7 `BohrVert`, 2 `BohrHoriz` | lower, left, right — an earlier, superseded layout |
+| `106F_476_340_1.MPR` | 476 × 340 × 18, 4 `BohrVert`, 8 `BohrHoriz` | all four edges, shop CAD |
+| `85F_758_597_1.MPR` | 758 × 597 × 18, 4 `BohrVert` | all four edges, shop CAD |
+| `2F_731_600_1.MPR` | 730.6 × 600 × 38, shaped outline, no machining | none, shop CAD |
 
-A banded edge is a `<152 \Grafischer Kommentar\` drawing `_s0.ply` in an
-80 mm square near that edge, all of them in one `<121 \Block\` named
-`Graphischer Kommentar Kante` at the end of the program. `DP` counts them,
-there are no separator lines inside the block, and the positions are written
-as expressions of `_BSX`/`_BSY`. The unbanded panel has no block at all.
-`Tools/gh_brep2mpr.py` writes this block exactly.
+In the reference a banded edge is a `<152 \Grafischer Kommentar\` drawing a
+blue line 10 mm thick, 10 mm outside that edge and its full length — the
+polygon `_hline1.ply`, carried in the comment (`LOCAL="1"`) — all of them in
+one `<121 \Block\` named `Graphischer Kommentar Kante` at the end of the
+program. `BR` is twice the edge and `HE` is `0`; the far edge is written
+`330+10`. The `-wrong` file is the same part with the lines inside the panel
+(`HE="±10"`, `BR` the edge itself); `6_290x114-F_1_banding.mpr` has that
+inside layout too. The woodWOP saves have single CRLF line endings; the
+`-wrong` file, a machine-side copy, doubles them — a blank line after every
+line — on purpose.
 
-Each file also has a `<101 \Kommentar\` naming the edges `L1`, `L2`, `W1`,
-`W2` with their edge band (`ABS 7045 0,5/22`); its Cyrillic text was lost to
-`?` on export. The polygon `_s0.ply` itself is not in the repository. These
-files have single CRLF line endings.
+The shop CAD programs draw the older mark instead: `_s0.ply` in an 80 mm
+square near the edge, positions as expressions of `_BSX`/`_BSY`, no separator
+lines inside the block. Each also has a `<101 \Kommentar\` naming the edges
+`L1`, `L2`, `W1`, `W2` with their edge band (`ABS 7045 0,5/22`); its Cyrillic
+text was lost to `?` on export. `_s0.ply` itself is not in the repository.
+These files have single CRLF line endings. The unbanded panel has no block
+at all.
 
 ### `Examples/Grasshopper/`
 
