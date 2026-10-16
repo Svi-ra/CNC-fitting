@@ -874,7 +874,9 @@ sheet:
 
 * **`gh_json2xlsx.py`**, a second component, turns the JSON into the text
   files of an `.xlsx`; an archive download zips them into a workbook that
-  opens ready to print, no macro — the way for ShapeDiver;
+  opens ready to print, no macro — the way for ShapeDiver.
+  `gh_json2xlsx_short.py` writes it with one cell per edge, and
+  `gh_json2xlsx_split.py` as a workbook per material;
 * **`CutListImport.bas`** in Excel reads a saved `.json` and builds the
   formatted sheet there.
 
@@ -1006,6 +1008,46 @@ above a block may come out 15 pt high where Excel, after the macro, makes it
 15.75. A JSON that is not `gh_cutlist2json`'s, or a newer version than the
 script knows, gives no parts and turns the component red.
 
+### Two more layouts
+
+Two more components take the same `JSON` and write `.xlsx` parts the same
+way. They are pasted and wired like `gh_json2xlsx.py`; each is
+self-contained, so each carries its own copy of the `.xlsx` writing — the
+code from *the .xlsx* down is `gh_json2xlsx.py`'s, unchanged, and a fix
+there goes into all three.
+
+**`gh_json2xlsx_short.py` — one workbook, one cell per edge.** The same
+outputs as `gh_json2xlsx.py` and the same sheet, less each edge's second and
+third cells (*Обозначение*, *Толщина*), the rest moved left:
+
+```
+A    B            C           D      E    F    G    H    I
+Nr.  Lungime (L)  Latime (W)  cant.  L-1  L-2  W-1  W-2  COMENTARII
+```
+
+The band row, the header's outline and the comment merges follow the
+columns; every cell kept looks as it does in the full workbook, except that
+`H` now closes the edges' outline, so it takes the medium right line `P` had.
+A sheet that is not the 17 columns `A:Q` gives no parts and an error.
+
+**`gh_json2xlsx_split.py` — a workbook per material.** The full `A:Q`
+layout, but one workbook for each block: the title row, then that material's
+block moved up to row 3. Categories that share a material share a workbook,
+as they share a block. The outputs come **a branch per workbook**, in the
+order of the blocks:
+
+| | Name | |
+| --- | --- | --- |
+| output | `PATH` | `{0}`, `{1}` … — each branch the six parts' paths |
+| output | `TEXT` | their texts, branch for branch |
+| output | `NAME` | one item a branch: `PROJECT - MATERIAL`, no extension; two that come out the same get ` (2)`, ` (3)` |
+| output | `INFO` | a line per workbook: its branch, name, lines and categories |
+
+Each branch is one archive, zipped as above. If the download takes one
+archive at a time, pick the branch first — *Tree Branch*, or *List Item* on
+`NAME` with a slider. Never flatten the tree on the way: the parts of
+different workbooks would land under the same six paths.
+
 ### The importer
 
 `CutListImport.bas` is an Excel VBA module. In Excel press Alt+F11, then
@@ -1050,8 +1092,8 @@ not read or save local files.
 * No sliders or other inputs are changed, no solution is rescheduled, and the
   only imports are `math`, `csv`, `json`, `re`, `Rhino` (for the Brep
   geometry) and Grasshopper's data tree types. `gh_cutlist2json.py` reads its
-  own inputs' access settings off `ghenv.Component`, and it and
-  `gh_json2xlsx.py` post errors on themselves — their own component, nothing
+  own inputs' access settings off `ghenv.Component`, and it and the
+  `gh_json2xlsx` components post errors on themselves — their own component, nothing
   else in the definition.
 
 ## Limits — read this before the first cut

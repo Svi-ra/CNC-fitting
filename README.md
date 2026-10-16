@@ -107,7 +107,9 @@ program's number, and each banded edge's material and thickness in the three
 cells the cutting software imports. A third component,
 `Tools/gh_json2xlsx.py`, turns that JSON into the text files of an `.xlsx`:
 zipped by ShapeDiver's archive download, they open in Excel as the finished
-sheet, ready to print with no macro. On the desktop,
+sheet, ready to print with no macro. Two variants of it,
+`Tools/gh_json2xlsx_short.py` and `Tools/gh_json2xlsx_split.py`, write the
+sheet with one cell per edge, or as a workbook per material. On the desktop,
 `Tools/CutListImport.bas`, imported into Excel's VBA editor, builds the same
 sheet from a saved `.json`. See
 [Tools/README.md](Tools/README.md#excel-cut-list).

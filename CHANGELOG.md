@@ -9,6 +9,41 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.17.0] — 2026-10-16
+
+Two more ways to write the cut list's `.xlsx`: one workbook with a single
+cell per edge, and a workbook per material.
+
+### Added
+
+- **`gh_json2xlsx_short.py`**, a Grasshopper component with the inputs and
+  outputs of `gh_json2xlsx.py`. It writes the same sheet without each edge's
+  second and third cells (*Обозначение*, *Толщина*): `Nr. | Lungime |
+  Latime | cant. | L-1 | L-2 | W-1 | W-2 | COMENTARII`, columns `A:I`. The
+  band row, outlines and merges move with the columns. A sheet that isn't
+  the 17-column `A:Q` layout gives no parts and an error.
+- **`gh_json2xlsx_split.py`**, a Grasshopper component that writes one
+  workbook per block of the JSON. Each has the title row and then that
+  material's block moved up to row 3, full `A:Q` layout. `PATH`, `TEXT` and
+  `NAME` come as a branch per workbook, `{0}` `{1}` …, in block order.
+  `NAME` is `PROJECT - MATERIAL`, and a repeated name gets ` (2)`, ` (3)`.
+  `INFO` gives a line per workbook.
+- Both carry `gh_json2xlsx.py`'s `.xlsx` code unchanged, so each one runs on
+  its own in a Script component. A fix to that code has to be copied into
+  all three.
+
+### Tested
+
+- Outside Grasshopper with its types stubbed, on
+  `Examples/CutList/sample_cutlist.json`. Every cell kept was compared with
+  the full workbook from `gh_json2xlsx.py` for value, bold, fill, alignment
+  and all four borders. The three per-material workbooks match their rows
+  exactly. The short workbook matches too, except column `H`, which now
+  closes the edges' outline and takes the medium right line `P` had.
+- All four workbooks opened in Excel and each printed on one landscape
+  page. Not yet run on ShapeDiver, and it isn't known whether its archive
+  download takes a tree of several workbooks.
+
 ## [0.16.0] — 2026-10-16
 
 The cut list reaches Excel without the macro: `Tools/gh_json2xlsx.py` turns

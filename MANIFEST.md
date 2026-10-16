@@ -200,6 +200,8 @@ the Ø8 blind holes are dowels).
 | `Tools/gh_name2zpl.py` | Grasshopper Script component (Rhino 8, Python 3): panel names in, Code 128 labels out as one ZPL text, ready to save and send to the printer as bytes. Writes no file itself, so it passes ShapeDiver's review. Wired downstream of `gh_brep2mpr.py`'s `NAME`. Barcodes are `^BC`, the printer's own Code 128; the component lays the label out, sizes the bars to the stock and reports a name that will not fit or cannot be encoded. |
 | `Tools/gh_cutlist2json.py` | Grasshopper Script component (Rhino 8, Python 3): `gh_brep2mpr.py`'s cut list, the exact material name for each category and the project name in, one JSON out that lays the list out as the shop's Excel cut lists are — a block per material, the panel names as comments, `Nr.` the program ID, and each edge's banding as name, designation and thickness. Text only, no file. Turns red rather than run once per line when its list inputs are left on Item access. Categories that share a material share a block. |
 | `Tools/gh_json2xlsx.py` | Grasshopper Script component (Rhino 8, Python 3): that JSON in, the six text files of an `.xlsx` out as paths and texts side by side, plus the archive's name without extension. Zipped by an archive download (ShapeDiver's), they open in Excel as the formatted sheet, ready to print, matching what `CutListImport.bas` builds. Text only, no file. |
+| `Tools/gh_json2xlsx_short.py` | Grasshopper Script component (Rhino 8, Python 3): as `gh_json2xlsx.py`, but the sheet keeps one cell per edge — the banding name under `L-1` … `W-2`, columns `A:I`. |
+| `Tools/gh_json2xlsx_split.py` | Grasshopper Script component (Rhino 8, Python 3): as `gh_json2xlsx.py`, but a workbook per material — the title and that block — as a branch per workbook on `PATH`, `TEXT` and `NAME` (`PROJECT - MATERIAL`). |
 | `Tools/CutListImport.bas` | Excel VBA module (Windows): `ImportCutList` / `ImportCutListHere` read that JSON and build the formatted sheet — values, widths, fills, borders, merges, page setup. Its own JSON reader; nothing to install beyond importing the `.bas`. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
@@ -234,7 +236,7 @@ Grasshopper (.gh)
       │            │    (the same names, as Code 128)       │
       │            └─ Tools/gh_cutlist2json.py ──► JSON     │
       │                 (TABLE, by material)   │            │
-      │          Tools/gh_json2xlsx.py ◄───────┤            │
+      │          Tools/gh_json2xlsx*.py ◄──────┤            │
       │            (.xlsx parts, zipped        │            │
       │             by ShapeDiver)   Tools/CutListImport.bas│
       │                       │                ▼            │
