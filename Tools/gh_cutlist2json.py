@@ -44,18 +44,30 @@ material, two empty rows apart.
              W-1 x3 | W-2 x3 |
     row 5..  1   | 490         | 100        | 4     |  ...edges...    | Bottom
 
-    A   Nr.          counts 1, 2, 3 ... within each material
+    A   Nr.          the program ID from the cut list -- the number the
+                     .mpr file name starts with
     B   Lungime (L)  Lungime from the cut list -- the side along the grain
     C   Latime (W)   Latime from the cut list
     D   cant.        Cantitate
     E:P              the edges, three cells each: L-1, L-2, W-1, W-2
     Q   COMENTARII   Denumire -- the panel name
 
-The edge cells are left empty: the cut list says nothing about banding, and
-an empty cell is safer than a guess. Everything else in a row comes from the
-cut list unchanged -- the sizes, the quantity, the panel name -- and the
-program ID it belongs to is kept in the data as well, so a line can be traced
-back to its .mpr.
+The edges come from the cut list's L-1, L-2, W-1 and W-2 columns: the
+banding material gh_brep2mpr read off BANDTYPE and BAND_MAP for that edge.
+Its three cells are the ones the cutting software's Excel import reads for
+each facing (Облицовка) -- name, designation, thickness:
+
+    Наим.         the material, as on BAND_MAP          ABS 22/0.5
+    Обозначение   the material again                    ABS 22/0.5
+    Толщина       the number after the last "/" in it   0.5
+
+A name with no number after a "/" leaves Толщина empty, and INFO says so:
+the importer may take the thickness off the panel's size, so a guess there
+would cut the panel wrong. An edge with no material -- unbanded, or a cut
+list from before those columns -- leaves all three cells empty. Everything
+else in a row comes from the cut list unchanged -- the sizes, the quantity,
+the panel name -- and the program ID it belongs to is kept in the data as
+well, so a line can be traced back to its .mpr.
 
 Materials
 ---------
@@ -76,14 +88,22 @@ program IDs. A program whose copies carry different names comes in as
 several lines under one ID; each stays a row of its own, with its own name
 and its own share of the quantity.
 
+Nr. is the program ID, so a row leads straight to its .mpr: 7 is
+7_480x232-B_1.mpr. It does not count the rows -- the lines of one program
+share its number, and a material's block starts at whatever number its
+first program has. A line with no ID has no file to point at, and its Nr.
+is left empty rather than given a number that may be another program's.
+
 The JSON
 --------
 One object with two halves. ``sections`` is the data, one entry per material:
 
     {"category": "base", "material": "PAL 8681 SM", "first_row": 3, ...
-     "rows": [{"nr": 1, "id": "0", "length": 490, "width": 100, "qty": 4,
-               "edges": {"L-1": null, "L-2": null, "W-1": null,
-                         "W-2": null},
+     "rows": [{"nr": 1, "id": "1", "length": 490, "width": 100, "qty": 4,
+               "edges": {"L-1": {"name": "ABS 22/1",
+                                 "designation": "ABS 22/1",
+                                 "thickness": 1},
+                         "L-2": null, "W-1": null, "W-2": null},
                "comment": "Bottom"}, ...]}
 
 ``sheet`` is the same rows already placed on the grid, ready to write
@@ -115,7 +135,9 @@ it, so a cut list with its columns moved still reads. Without a
 header the columns are taken in gh_brep2mpr's order. A line counts as the
 header when it names at least two of the columns:
 
-    Material;ID;Lungime;Latime;Cantitate;Denumire
+    Material;ID;Lungime;Latime;Cantitate;Denumire;L-1;L-2;W-1;W-2
+
+Denumire and the four edges may be missing; the first five may not.
 
 A line that cannot be read -- too few fields, a size or a quantity that is
 not a number -- is left out and named in INFO.
@@ -123,6 +145,7 @@ not a number -- is left out and named in INFO.
 
 import csv
 import json
+import re
 
 from Grasshopper import DataTree
 from Grasshopper.Kernel import GH_ParamAccess, GH_RuntimeMessageLevel
@@ -133,7 +156,8 @@ from Grasshopper.Kernel.Data import GH_Path
 # ---------------------------------------------------------------------------
 
 SEP = ";"                   # gh_brep2mpr's TABLE_SEP
-FIELDS = ("Material", "ID", "Lungime", "Latime", "Cantitate", "Denumire")
+FIELDS = ("Material", "ID", "Lungime", "Latime", "Cantitate", "Denumire",
+          "L-1", "L-2", "W-1", "W-2")
 
 SHEET_NAME = "Lista"        # Excel allows 31 characters, none of []:*?/\
 TITLE_PREFIX = "Material: "
@@ -143,7 +167,7 @@ WHOLE = ("TABLE", "CAT", "MATERIAL")    # inputs that must come in whole
 
 # The reference workbook's columns, A to Q. Each edge takes three cells.
 EDGES = ("L-1", "L-2", "W-1", "W-2")
-CELLS_PER_EDGE = 3
+CELLS_PER_EDGE = 3          # Наим., Обозначение, Толщина
 HEAD = (["Nr.", "Lungime (L)", "Latime (W)", "cant."]
         + [e for e in EDGES for _ in range(CELLS_PER_EDGE)])
 COMMENT_HEAD = "COMENTARII"
@@ -245,7 +269,8 @@ def number(text):
 
 
 def read_table(lines, info):
-    """The cut list lines -> [{category, id, length, width, qty, name}]."""
+    """The cut list lines -> [{category, id, length, width, qty, name,
+    edges}], edges being {edge: edge_cells(), or None}."""
     known = [name.lower() for name in FIELDS]
     index = {name: i for i, name in enumerate(known)}
     pieces = []
@@ -286,8 +311,34 @@ def read_table(lines, info):
             continue
         pieces.append({"category": field("Material"), "id": field("ID"),
                        "length": length, "width": width, "qty": qty,
-                       "name": field("Denumire") or ""})
+                       "name": field("Denumire") or "",
+                       "edges": dict((e, edge_cells(field(e), info))
+                                     for e in EDGES)})
     return pieces
+
+
+THICKNESS = re.compile(r"/\s*(\d+(?:[.,]\d+)?)\s*(?:mm)?\s*$", re.I)
+
+
+def edge_cells(material, info):
+    """A banding material -> {name, designation, thickness}, or None.
+
+    The thickness is the number after the last "/" of the name -- ABS 22/0.5
+    is 0.5 thick. A name that does not end so gets no thickness, never a
+    guessed one, and INFO says so once.
+    """
+    if not material:
+        return None
+    found = THICKNESS.search(material)
+    thickness = number(found.group(1)) if found else None
+    if thickness is None:
+        note = ("WARNING: no thickness in banding material '%s' - Толщина "
+                "left empty; name it as <type> <width>/<thickness>, "
+                "\"ABS 22/1\"" % material)
+        if note not in info:
+            info.append(note)
+    return {"name": material, "designation": material,
+            "thickness": thickness}
 
 
 def read_materials(cats, names, info):
@@ -332,6 +383,23 @@ def group(pieces, materials, info):
                         "not a material name" % (cat or "(none)"))
     return [(cat, materials.get(cat, cat), rows)
             for cat, rows in blocks.items() if rows]
+
+
+def row_number(ident):
+    """Nr. for a cut list line: its program ID, the number on the .mpr.
+
+    An ID that is a whole number is written as a number, so Excel sorts it
+    as one; any other ID -- one wired on gh_brep2mpr's ID -- as it is. A
+    line with no ID gets None, an empty cell.
+    """
+    ident = (ident or "").strip()
+    if not ident:
+        return None
+    try:
+        value = number(ident)
+    except ValueError:
+        return ident
+    return value if isinstance(value, int) else ident
 
 
 def styles():
@@ -396,15 +464,21 @@ def build(project, blocks):
         tall(head)
 
         rows = []
-        for nr, piece in enumerate(pieces, 1):
-            put(first + nr - 1,
+        for i, piece in enumerate(pieces):
+            nr = row_number(piece["id"])
+            edges = piece.get("edges") or {}
+            cells = []
+            for e in EDGES:
+                edge = edges.get(e) or {}
+                cells += [edge.get("name"), edge.get("designation"),
+                          edge.get("thickness")]
+            put(first + i,
                 [nr, piece["length"], piece["width"], piece["qty"]]
-                + [None] * (len(EDGES) * CELLS_PER_EDGE)
-                + [piece["name"] or None])
+                + cells + [piece["name"] or None])
             rows.append({"nr": nr, "id": piece["id"],
                          "length": piece["length"], "width": piece["width"],
                          "qty": piece["qty"],
-                         "edges": {e: None for e in EDGES},
+                         "edges": dict((e, edges.get(e)) for e in EDGES),
                          "comment": piece["name"]})
         formats += [{"range": ref(1, first, 1, last), "style": "nr"},
                     {"range": ref(2, first, 4, last), "style": "number"},
@@ -498,8 +572,9 @@ def lay_out(notes):
                     "" if len(section["rows"]) == 1 else "s",
                     section["pieces"],
                     "" if section["pieces"] == 1 else "s"), GH_Path(0))
-    notes.append("edges L-1 L-2 W-1 W-2 left empty - the cut list carries "
-                 "no banding")
+    if not any(any(p["edges"].values()) for p in pieces):
+        notes.append("edges L-1 L-2 W-1 W-2 left empty - the cut list "
+                     "carries no banding materials")
     return json.dumps(doc, ensure_ascii=False, indent=INDENT)
 
 

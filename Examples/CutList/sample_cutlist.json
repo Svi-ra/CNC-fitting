@@ -331,9 +331,9 @@
      490,
      100,
      4,
-     null,
-     null,
-     null,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
      null,
      null,
      null,
@@ -371,44 +371,44 @@
    {
     "row": 7,
     "cells": [
-     3,
+     4,
      2744,
      528,
      1,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
+     "ABS 36/1",
+     "ABS 36/1",
+     1,
+     "ABS 36/1",
+     "ABS 36/1",
+     1,
+     "ABS 36/1",
+     "ABS 36/1",
+     1,
+     "ABS 36/1",
+     "ABS 36/1",
+     1,
      "Blat (PAZ 9x4)"
     ]
    },
    {
     "row": 8,
     "cells": [
-     4,
+     5,
      612,
      580,
+     1,
+     "ABS 22/1",
+     "ABS 22/1",
      1,
      null,
      null,
      null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
      "Side left"
     ]
    },
@@ -419,18 +419,18 @@
      612,
      580,
      1,
+     "ABS 22/1",
+     "ABS 22/1",
+     1,
      null,
      null,
      null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
      "Side right"
     ]
    },
@@ -481,13 +481,13 @@
    {
     "row": 14,
     "cells": [
-     1,
+     3,
      564,
      145,
      1,
-     null,
-     null,
-     null,
+     "ABS 22/0.5",
+     "ABS 22/0.5",
+     0.5,
      null,
      null,
      null,
@@ -503,7 +503,7 @@
    {
     "row": 15,
     "cells": [
-     2,
+     6,
      582.5,
      124,
      1,
@@ -569,22 +569,22 @@
    {
     "row": 20,
     "cells": [
-     1,
+     7,
      530,
      177,
      2,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
+     "ABS 22/1",
+     "ABS 22/1",
+     1,
+     "ABS 22/1",
+     "ABS 22/1",
+     1,
+     "ABS 22/1",
+     "ABS 22/1",
+     1,
+     "ABS 22/1",
+     "ABS 22/1",
+     1,
      "Front sertar"
     ]
    }
@@ -792,12 +792,16 @@
    "rows": [
     {
      "nr": 1,
-     "id": "0",
+     "id": "1",
      "length": 490,
      "width": 100,
      "qty": 4,
      "edges": {
-      "L-1": null,
+      "L-1": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      },
       "L-2": null,
       "W-1": null,
       "W-2": null
@@ -806,7 +810,7 @@
     },
     {
      "nr": 2,
-     "id": "1",
+     "id": "2",
      "length": 591,
      "width": 70,
      "qty": 2,
@@ -819,44 +823,84 @@
      "comment": "Traversă"
     },
     {
-     "nr": 3,
-     "id": "3",
+     "nr": 4,
+     "id": "4",
      "length": 2744,
      "width": 528,
      "qty": 1,
      "edges": {
-      "L-1": null,
-      "L-2": null,
-      "W-1": null,
-      "W-2": null
+      "L-1": {
+       "name": "ABS 36/1",
+       "designation": "ABS 36/1",
+       "thickness": 1
+      },
+      "L-2": {
+       "name": "ABS 36/1",
+       "designation": "ABS 36/1",
+       "thickness": 1
+      },
+      "W-1": {
+       "name": "ABS 36/1",
+       "designation": "ABS 36/1",
+       "thickness": 1
+      },
+      "W-2": {
+       "name": "ABS 36/1",
+       "designation": "ABS 36/1",
+       "thickness": 1
+      }
      },
      "comment": "Blat (PAZ 9x4)"
     },
     {
-     "nr": 4,
-     "id": "4",
+     "nr": 5,
+     "id": "5",
      "length": 612,
      "width": 580,
      "qty": 1,
      "edges": {
-      "L-1": null,
+      "L-1": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      },
       "L-2": null,
-      "W-1": null,
-      "W-2": null
+      "W-1": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      },
+      "W-2": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      }
      },
      "comment": "Side left"
     },
     {
      "nr": 5,
-     "id": "4",
+     "id": "5",
      "length": 612,
      "width": 580,
      "qty": 1,
      "edges": {
-      "L-1": null,
+      "L-1": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      },
       "L-2": null,
-      "W-1": null,
-      "W-2": null
+      "W-1": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      },
+      "W-2": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      }
      },
      "comment": "Side right"
     }
@@ -871,13 +915,17 @@
    "pieces": 2,
    "rows": [
     {
-     "nr": 1,
-     "id": "2",
+     "nr": 3,
+     "id": "3",
      "length": 564,
      "width": 145,
      "qty": 1,
      "edges": {
-      "L-1": null,
+      "L-1": {
+       "name": "ABS 22/0.5",
+       "designation": "ABS 22/0.5",
+       "thickness": 0.5
+      },
       "L-2": null,
       "W-1": null,
       "W-2": null
@@ -885,8 +933,8 @@
      "comment": "Raft"
     },
     {
-     "nr": 2,
-     "id": "5",
+     "nr": 6,
+     "id": "6",
      "length": 582.5,
      "width": 124,
      "qty": 1,
@@ -909,16 +957,32 @@
    "pieces": 2,
    "rows": [
     {
-     "nr": 1,
-     "id": "6",
+     "nr": 7,
+     "id": "7",
      "length": 530,
      "width": 177,
      "qty": 2,
      "edges": {
-      "L-1": null,
-      "L-2": null,
-      "W-1": null,
-      "W-2": null
+      "L-1": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      },
+      "L-2": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      },
+      "W-1": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      },
+      "W-2": {
+       "name": "ABS 22/1",
+       "designation": "ABS 22/1",
+       "thickness": 1
+      }
      },
      "comment": "Front sertar"
     }

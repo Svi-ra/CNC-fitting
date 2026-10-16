@@ -81,23 +81,29 @@ the quantities are added up and the file is named for the total. Material and
 grain direction come in beside the geometry — panels of the same shape cut
 from different board, or laid across the grain, stay separate pieces — and the
 component also returns the cut list,
-`Material;ID;Lungime;Latime;Cantitate;Denumire`. Each panel's name comes in
-the same way and is kept through the folding: copies of one shape that carry
-different names share a program but keep a cut list line each.
+`Material;ID;Lungime;Latime;Cantitate;Denumire;L-1;L-2;W-1;W-2`. Each panel's
+name comes in the same way and is kept through the folding: copies of one
+shape that carry different names share a program but keep a cut list line
+each. Programs are numbered from 1, and the cut list's `ID` is the number on
+the file name.
 
 Edge banding comes in the same way: a pattern per part (`0011`, `1010` …,
 read clockwise on the part's own plane) becomes a graphic comment on each
 banded edge, a blue line just outside it, as woodWOP draws it. The marks
 are turned with the piece exactly as its bores are, so in every setup they
 sit on the edge that is really banded, and they change nothing that is
-machined.
+machined. A code per side (`1221` …) and a map of what each code stands for
+(`ABS 22/1=1` …) add the banding material: it rides the same turns as the
+marks, is named on them in the report, and fills the cut list's edge
+columns.
 See [Tools/README.md](Tools/README.md#grasshopper-component).
 
 The cut list goes on to Excel through a second component,
 `Tools/gh_cutlist2json.py`: give it the exact material name for each
 category and the project name, and it returns one JSON that lays the list
 out the way the shop's Excel cut lists are — a block per material, the panel
-names as comments. `Tools/CutListImport.bas`, imported into Excel's VBA
+names as comments, `Nr.` the program's number, and each banded edge's
+material and thickness in the three cells the cutting software imports. `Tools/CutListImport.bas`, imported into Excel's VBA
 editor, turns that JSON into the formatted sheet. See
 [Tools/README.md](Tools/README.md#excel-cut-list).
 

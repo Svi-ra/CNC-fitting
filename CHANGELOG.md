@@ -9,6 +9,67 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.15.0] — 2026-10-16
+
+Banding materials: `Tools/gh_brep2mpr.py` names what each banded edge is
+banded with, and the Excel cut list carries it. Programs are numbered from 1.
+
+### Added
+
+- **`BANDTYPE` and `BAND_MAP`** on `gh_brep2mpr.py`, both optional.
+  `BANDTYPE` is one code per side per part (`1221`, `0111` …), in `BAND`'s
+  order — bottom, left, top, right of the plane; `BAND_MAP` names what each
+  one-character code stands for (`ABS 22/0.5=0`, `ABS 22/1=1` …, split at the
+  last `=`). Only the sides `BAND` bands are read, so `0` is a material code
+  like any other; `BAND` alone still says where the banding is.
+- Each material is hung on the same world side as its mark and goes through
+  the same turns, so it names the edge the mark is on in every setup. `INFO`
+  adds it to the marks — `banding marked on the lower edge (ABS 22/1)` — and
+  a note per part says which side got which material.
+- `TABLE` has four more columns, `L-1;L-2;W-1;W-2`: the materials of the two
+  edges along `Lungime` and the two along `Latime`, as the first program
+  lies. The first six columns are where they were.
+- `gh_cutlist2json.py` reads those columns and fills each edge's three cells
+  as the cutting software's Excel import reads them (columns 5–16): *Наим.*
+  and *Обозначение* the material, *Толщина* the number after its last `/`
+  (`ABS 22/0.5` → 0.5). The JSON's `edges` hold the same three values.
+- Setting `FIRST_ID = 1`, where the program count starts.
+
+### Changed
+
+- **Programs are numbered from 1, not 0.** File names and the cut list's
+  `ID` start at `1_…`; a project converted before this comes out one number
+  higher. IDs wired on `ID` are unchanged.
+- **The cut list's `ID` is always the file name's.** With IDs wired on `ID`
+  it used to carry the running number instead.
+- **`Nr.` in the Excel sheet is the program `ID`** rather than a count of
+  the block's rows, so a row leads straight to its `.mpr`. Lines of one
+  program share it, a text ID stays text, and a line with no ID gets an empty
+  `Nr.`.
+- Two solids of one shape banded with different materials are now two pieces,
+  as with `MAT`; `INFO` says so when it keeps them apart.
+- `Examples/CutList/sample_cutlist.json` regenerated: IDs from 1, banding on
+  six lines.
+
+### Unchanged
+
+- With or without `BANDTYPE`, the marks, setups, macros and `.mpr` text are
+  the same. Unreadable banding codes — a code not on `BAND_MAP`, a type that
+  is not four codes, a banded part with no type — leave those materials out
+  with a `WARNING` and still write the marks.
+
+### Tested
+
+- Both components with Grasshopper stubbed: `BAND_MAP` parsing and its
+  warnings, `BANDTYPE` read against `BAND` (codes under a 0 ignored, unmapped
+  and lost-zero codes reported), each material landing on the same edge as
+  its mark for every subset of sides in all eight placements, the `.mpr`
+  byte-identical with and without materials, the cut list cells, thickness
+  read from `22/0.5` and `2/0,8 mm` and left empty for a name without one,
+  old six-column cut lists, programs numbered from 1, wired IDs reaching the
+  cut list, and `Nr.` across blocks. Not yet run in Rhino or through the
+  cutting software's import.
+
 ## [0.14.0] — 2026-10-16
 
 The cut list goes to Excel: `Tools/gh_cutlist2json.py` lays it out as the
@@ -42,7 +103,8 @@ shop's Excel cut lists are, and `Tools/CutListImport.bas` builds the sheet.
 
 ### Known limits
 
-- The edge columns `L-1` … `W-2` stay empty: the cut list carries no banding.
+- The edge columns `L-1` … `W-2` stay empty: the cut list carries no banding
+  (filled since 0.15.0).
 - Where the reference workbook is uneven — the fill of its first material row
   stopping at column J, a few stray medium lines — the generated sheet keeps
   one even pattern instead.

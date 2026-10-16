@@ -16,6 +16,10 @@ Component setup
     input   BAND   str      access = List   edge banding per part, optional
     input   PLN    Plane    access = List   each part's own plane, needed
                                             wherever BAND bands an edge
+    input   BANDTYPE str    access = List   banding material code per side,
+                                            per part, optional
+    input   BAND_MAP str    access = List   what each code stands for,
+                                            "ABS 22/1=1", optional
     output  MPR    -                        one whole program per setup,
                                             line endings already embedded
     output  NAME   -                        the file name for each program
@@ -126,7 +130,7 @@ gets an INFO line saying what kept them apart -- the material, the grain, or
 the first vertex or face that differs, with both values.
 
 Folding copies in does not eat any numbers: the programs are numbered by
-program, 0, 1, 2 ... in the order the pieces come in, so the numbering runs
+program, 1, 2, 3 ... in the order the pieces come in, so the numbering runs
 on without gaps however many solids were folded together. A piece with an ID
 of its own on ID keeps it -- the ID of the first solid of a group names the
 programs, and where the copies carried IDs of their own, INFO says so.
@@ -184,19 +188,52 @@ read, never its origin: a panel cut after its plane was set may no longer
 have the origin on its corner, or on it at all. Two solids of the same
 shape whose banding differs are different pieces.
 
+Banding materials
+-----------------
+BAND says where a piece is banded; BANDTYPE and BAND_MAP say with what.
+
+    BANDTYPE  "1221", "0111", "0212" ... one code per side, in the same
+              order as BAND -- bottom, left, top, right of the plane. Text,
+              like BAND, so a leading zero survives.
+    BAND_MAP  "ABS 22/0.5=0", "ABS 22/1=1", "ABS 36/1=2" ... a material and
+              the one-character code that stands for it. Split at the last
+              "=", so the name is taken as given.
+
+Only the sides BAND bands are read: with BAND 1001 and BANDTYPE 1221, the
+bottom is ABS 22/1 and the right ABS 22/1, and the 2s under BAND's 0s are
+not looked at. So 0 is a material code like any other -- it does not mean
+"not banded"; BAND alone says that, and the marks, the setups and the
+machining are exactly what they are without BANDTYPE.
+
+Each material is hung on the same world side as its banding mark and goes
+through the same turns, so it names the edge the mark is on. INFO adds it to
+each setup's marks -- "banding marked on the lower edge (ABS 22/1)" -- and
+the cut list carries it in L-1, L-2, W-1 and W-2. The MPR is unchanged.
+
+A code with no material on BAND_MAP, a BANDTYPE that is not four codes, or a
+banded piece with no BANDTYPE while the input is wired gives a WARNING in
+INFO and leaves those materials out; the marks are still written. Two solids
+of the same shape banded with other materials are different pieces.
+
 The cut list
 ------------
 TABLE is the cut list: a header line and then one line per piece.
 
-    Material;ID;Lungime;Latime;Cantitate;Denumire
-    base;0;480;232;1;Bottom
-    base;1;560;300;1;Side left
-    base;1;560;300;1;Side right
+    Material;ID;Lungime;Latime;Cantitate;Denumire;L-1;L-2;W-1;W-2
+    base;0;480;232;1;Bottom;ABS 22/1;;;
+    base;1;560;300;1;Side left;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
+    base;1;560;300;1;Side right;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
 
-ID is which program the line is for, counting from zero, and matches the one
-on the file name. Identical solids folded into one program share that one
+ID is which program the line is for, counting from FIRST_ID (1), and
+matches the one on the file name. Identical solids folded into one program share that one
 number, and the numbering has no gaps. Lungime is the dimension along the
 grain -- the long side of the panel unless DIR said otherwise.
+
+L-1 and L-2 are the banding materials of the two edges along Lungime, W-1
+and W-2 of the two along Latime, as the first program lies: L-1 is its
+lower edge and L-2 its upper one, W-1 its left and W-2 its right -- turned
+the other way round for a piece laid across the grain. An edge with no
+banding, or no material, is left empty.
 
 Denumire is the panel's name, from PNAME: a plain list, one item per part,
 like DIR and MAT, carried through as given. It is not part of the
@@ -216,7 +253,8 @@ modelled, so the operator sees the back. `F` = turned over. The quantity is
 the sum of QTY over the identical solids folded into this program (1 per
 solid if nothing came in on QTY), and is the same on every program of one
 piece. With no ID
-input the programs are simply numbered 0, 1, 2 ... in order.
+input the programs are simply numbered 1, 2, 3 ... in order -- from
+FIRST_ID, the way the cut list's Nr. counts.
 """
 
 import bisect
@@ -247,13 +285,14 @@ CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
                     # then has to arrive already cut to shape.
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
+FIRST_ID = 1        # the number of the first program, when ID is unwired
 
 MERGE_IDENTICAL = True  # solids of the same shape share one program
 DUP_TOL = 0.01          # two solids count as the same shape within this, mm
 
 TABLE_SEP = ";"
 TABLE_HEADER = ("Material", "ID", "Lungime", "Latime", "Cantitate",
-                "Denumire")
+                "Denumire", "L-1", "L-2", "W-1", "W-2")
 
 # ---------------------------------------------------------------------------
 # the machine
@@ -519,6 +558,7 @@ class Part(object):
         self.macros = []            # (id, name, [(key, value), ...])
         self.contour = None         # [(kind, [(param, value), ...]), ...]
         self.bands = []             # banded edges in this setup, BAND_MARKS keys
+        self.band_mats = {}         # their materials: {edge: material}
         self.notes = []
 
 
@@ -1464,8 +1504,21 @@ def band_world(sides, plane):
     or which side is meant is a guess. Its origin is not checked -- a panel
     cut after its plane was set leaves the two apart, and that is fine.
     """
+    facing, why = band_world_sides(sides, plane)
+    if facing is None:
+        return None, why
+    return frozenset(facing.values()), None
+
+
+def band_world_sides(sides, plane):
+    """band_world, keeping which side of the plane faces which way.
+
+    -> ({side: direction}, None) or (None, why not). The banding materials
+    are hung on the very directions the marks are drawn from, so the two
+    cannot part company.
+    """
     if not sides:
-        return frozenset(), None
+        return {}, None
     if plane is None:
         return None, ("banded on the %s side%s but no plane on PLN to read "
                       "it against" % (side_list(sides),
@@ -1482,7 +1535,7 @@ def band_world(sides, plane):
                       "axis is %s deg off the panel's thickness"
                       % fnum(math.degrees(math.acos(min(1.0, abs(za[2])))), 1))
 
-    out = set()
+    out = {}
     for side in sides:
         u, v = SIDE_DIR[side]
         w = vadd(vmul(xa, u), vmul(ya, v))
@@ -1492,8 +1545,8 @@ def band_world(sides, plane):
             return None, ("the plane on PLN has its X axis %s deg off the "
                           "panel's sides - which side is which is a guess"
                           % fnum(min(ang, 90.0 - ang), 1))
-        out.add(hit[0])
-    return frozenset(out), None
+        out[side] = hit[0]
+    return out, None
 
 
 def same_bands(a, b):
@@ -1526,15 +1579,164 @@ def band_edges(bands, quarter, mark, turned):
     """
     if not bands:
         return []
+    edges = set(band_edge_map(bands, quarter, mark, turned).values())
+    return [m[0] for m in BAND_MARKS if m[0] in edges]
+
+
+def band_edge_map(dirs, quarter, mark, turned):
+    """{world direction: the edge it is in one setup} -- see band_edges."""
     _pt, vec = setup_maps(mark, 1.0, 1.0, 1.0, turned)
-    edges = set()
-    for dx, dy in bands:
+    out = {}
+    for dx, dy in dirs:
         d = (float(dx), float(dy), 0.0)
         if quarter:
             d = rot_z90(d)
         d = vec(d)
-        edges.add(EDGE_OF[(int(round(d[0])), int(round(d[1])))])
-    return [m[0] for m in BAND_MARKS if m[0] in edges]
+        out[(dx, dy)] = EDGE_OF[(int(round(d[0])), int(round(d[1])))]
+    return out
+
+
+def band_mat_edges(mats, quarter, mark, turned):
+    """The banding materials as edges of one setup: {edge: material}.
+
+    `mats` face as in the world, like the banded sides they belong to, and
+    go through band_edge_map, the same turns the marks take. A side whose
+    material is not known is left out.
+    """
+    if not mats:
+        return {}
+    edges = band_edge_map(mats, quarter, mark, turned)
+    return dict((edges[d], m) for d, m in mats.items() if m)
+
+
+# ---------------------------------------------------------------------------
+# edge banding materials
+# ---------------------------------------------------------------------------
+#
+# BAND says where a panel is banded; BANDTYPE says with what. A BANDTYPE
+# item is one code per side, in BAND_SIDES order like a BAND pattern, and
+# BAND_MAP names the material each code stands for. Only the sides BAND
+# bands are read: the code under a 0 in BAND is not looked at, so 0 can be
+# a material code like any other.
+
+def band_map(items):
+    """BAND_MAP items -> ({code: material}, [warnings]).
+
+    Each item is "<material>=<code>", "ABS 22/1=1"; the last "=" splits it,
+    so a material name may hold one. A code is one character, as BANDTYPE
+    gives one per side. An item may hold several lines, one mapping each.
+    A code given twice for two materials keeps the first, and says so.
+    """
+    out, warnings = {}, []
+    for item in items:
+        if item is None:
+            continue
+        for line in str(item).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, eq, code = line.rpartition("=")
+            name, code = name.strip(), code.strip()
+            if not eq or not name or len(code) != 1:
+                warnings.append(
+                    "WARNING: BAND_MAP item %r left out - it should read "
+                    "<material>=<code>, the code one character, as in "
+                    "\"ABS 22/1=1\"" % line)
+                continue
+            if code in out and out[code] != name:
+                warnings.append(
+                    "WARNING: BAND_MAP gives code %s twice - %s and %s; "
+                    "%s is used" % (code, out[code], name, out[code]))
+                continue
+            out[code] = name
+    return out, warnings
+
+
+def band_types(value):
+    """A BANDTYPE item -> (one code per BAND_SIDES side, why it cannot be read).
+
+    Nothing at all gives (None, None): no codes for this part. Anything but
+    exactly one character per side is refused, as BAND does -- 0111 wired
+    as a number arrives as 111, and every code would land a side out.
+    """
+    if value is None:
+        return None, None
+    text = str(value).strip()
+    if not text:
+        return None, None
+    n = len(BAND_SIDES)
+    if len(text) == n and not any(c.isspace() for c in text):
+        return tuple(text), None
+    why = "banding type %r is not %d codes, one per side" % (text, n)
+    number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if number or len(text) < n:
+        why += (" - a type that came in as a number has lost its leading "
+                "zeros; wire BANDTYPE as text")
+    return None, why
+
+
+def band_materials(facing, codes, mapping):
+    """The materials of the banded sides, as the ways they face in the world.
+
+    -> ({direction: material, or None where the code is not on BAND_MAP},
+    [what INFO should say]). `facing` is band_world_sides' {side: direction}
+    for the sides BAND bands, so a material goes exactly where its mark is.
+    """
+    mats, by_mat, unknown = {}, {}, []
+    for side, code in zip(BAND_SIDES, codes):
+        if side not in facing:
+            continue
+        mat = mapping.get(code)
+        mats[facing[side]] = mat
+        if mat is None:
+            unknown.append((side, code))
+        else:
+            by_mat.setdefault(mat, []).append(side)
+    notes = []
+    if by_mat:
+        notes.append("banding type %s: %s" % ("".join(codes), "; ".join(
+            "%s on the %s side%s" % (m, side_list(s),
+                                     "" if len(s) == 1 else "s")
+            for m, s in by_mat.items())))
+    for side, code in unknown:
+        notes.append("WARNING: banding type %s gives the %s side code %s, "
+                     "which is not on BAND_MAP - no material for it"
+                     % ("".join(codes), side, code))
+    return mats, notes
+
+
+def same_band_mats(a, b):
+    """Two pieces banded with the same materials on the same world sides.
+
+    As with same_bands, materials that could not all be read match nothing:
+    folding such a piece into another would hand it materials it never had.
+    """
+    return (a is not None and b is not None and a == b
+            and None not in a.values())
+
+
+def band_mats_text(mats):
+    """The banding materials as they face in the world, for INFO."""
+    if mats is None:
+        return "with materials that could not be read"
+    if not mats:
+        return "with no materials given"
+    parts = sorted("%s on %s" % (m or "an unknown material", WORLD_SIDE[d])
+                   for d, m in mats.items())
+    return "with " + side_list(parts)
+
+
+def table_edges(edge_mats, along_grain):
+    """The cut list's L-1, L-2, W-1, W-2 cells from {edge: material}.
+
+    L-1 and L-2 are the edges along Lungime, W-1 and W-2 those along Latime,
+    as the first program lies: along the grain, Lungime runs along X, so
+    L-1 is the lower edge, L-2 the upper, W-1 the left and W-2 the right.
+    Across the grain the two pairs swap. An unbanded edge is left empty.
+    """
+    order = (("YP", "YM", "XP", "XM") if along_grain
+             else ("XP", "XM", "YP", "YM"))
+    return [edge_mats.get(e, "") for e in order]
 
 
 # ---------------------------------------------------------------------------
@@ -1734,12 +1936,13 @@ def grip_notes(needed, able, grip, notes):
                     % (o[0], name, _where(u, v), int(round(share * 100))))
 
 
-def brep_to_setups(brep, bands=None, notes=None):
+def brep_to_setups(brep, bands=None, notes=None, mats=None):
     """One Brep -> [(mark, Part), ...]. Every Part carries the same notes.
 
     `bands` are the banded sides as they face in the world -- see
     band_world. They are drawn on each setup once it is planned, and play
-    no part in planning it.
+    no part in planning it. `mats` are their materials, facing the same
+    way -- see band_materials -- and are turned with them.
     """
     notes = list(notes or [])
     if brep is None or not brep.IsValid:
@@ -1768,6 +1971,7 @@ def brep_to_setups(brep, bands=None, notes=None):
         part.turned = turned
         part.notes = notes
         part.bands = band_edges(bands, quarter, mark, turned)
+        part.band_mats = band_mat_edges(mats, quarter, mark, turned)
         for feat, dia in work:
             m = macro(feat, dia, lz)
             if m is not None:
@@ -1981,18 +2185,22 @@ def panel_size(brep):
     return lx, ly
 
 
-def table_row(material, number, lx, ly, along_grain, qty, name=""):
+def table_row(material, ident, lx, ly, along_grain, qty, name="",
+              edge_mats=None):
     """One cut list line.
 
     Lungime is the dimension along the grain, so the two sizes swap for a
     piece laid across it -- the same swap as turning the panel 90 deg. The
     name is free text, so a separator or a line break in it is made a space
-    rather than split the line.
+    rather than split the line; so are the banding materials, which follow
+    in L-1, L-2, W-1, W-2 -- see table_edges.
     """
     lungime, latime = (lx, ly) if along_grain else (ly, lx)
     name = " ".join(name.replace(TABLE_SEP, " ").split())
-    return TABLE_SEP.join([material, str(number), fnum(lungime),
-                           fnum(latime), str(qty), name])
+    edges = [" ".join(m.replace(TABLE_SEP, " ").split())
+             for m in table_edges(edge_mats or {}, along_grain)]
+    return TABLE_SEP.join([material, str(ident), fnum(lungime),
+                           fnum(latime), str(qty), name] + edges)
 
 
 def name_rows(members):
@@ -2066,7 +2274,10 @@ def describe(ident, qty, setups, copies=(), material="", along_grain=True,
             detail += (", " if detail else "") + "contour"
         if part.bands:
             detail += ((", " if detail else "") + "banding marked on the "
-                       + side_list(EDGE_NAME[e] for e in part.bands))
+                       + side_list(EDGE_NAME[e] + (" (%s)" % part.band_mats[e]
+                                                   if e in part.band_mats
+                                                   else "")
+                                   for e in part.bands))
         lines.append("  %s  %-*s %s"
                      % (mark, width, ORIENT_NAME[(mark, part.turned)],
                         detail or "no machining"))
@@ -2195,6 +2406,14 @@ try:
     PLN
 except NameError:
     PLN = None
+try:
+    BANDTYPE
+except NameError:
+    BANDTYPE = None
+try:
+    BAND_MAP
+except NameError:
+    BAND_MAP = None
 
 MPR = DataTree[object]()
 NAME = DataTree[object]()
@@ -2209,13 +2428,23 @@ materials = column(MAT)
 panel_names = column(PNAME)
 patterns = column(BAND)
 planes = column(PLN)
+band_codes = column(BANDTYPE)
+band_mapping, map_warnings = band_map(column(BAND_MAP))
+for warning in map_warnings:
+    INFO.Add(warning, GH_Path(0))
+if band_codes and not band_mapping:
+    INFO.Add("WARNING: BANDTYPE is wired but BAND_MAP names no materials - "
+             "no banding materials", GH_Path(0))
+elif band_mapping and not band_codes:
+    INFO.Add("WARNING: BAND_MAP is wired but BANDTYPE is not - no banding "
+             "materials", GH_Path(0))
 taken = {}
 n = 0
 
 # Read the whole input first: identical solids have to be found before any of
 # them is converted, so the shape is only put through the planner once.
 # (path, brep, ident, qty, material, along_grain, explicit, bands,
-#  band_notes, panel name), in input order
+#  band_notes, panel name, band materials), in input order
 entries = []
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
@@ -2245,9 +2474,12 @@ for path, items in branches_of(B):
         pattern = at(patterns, n, None)
         sides, why = band_pattern(pattern)
         bands = None
+        facing = None
         if why is None:
             try:
-                bands, why = band_world(sides, at(planes, n, None))
+                facing, why = band_world_sides(sides, at(planes, n, None))
+                if facing is not None:
+                    bands = frozenset(facing.values())
             except Exception as exc:
                 why = "banding could not be read: %s" % exc
         if why is not None:
@@ -2259,17 +2491,36 @@ for path, items in branches_of(B):
         else:
             band_notes = []
 
+        # Banding materials: BANDTYPE's code for each side BAND bands, named
+        # on BAND_MAP and hung on the same world directions as the marks.
+        # They add to the marks and the cut list, never move them: without
+        # readable banding there is nothing to hang a material on.
+        band_mats = {}
+        if facing and band_codes:
+            codes, why = band_types(at(band_codes, n, None))
+            if why is not None:
+                band_mats = None
+                band_notes.append("WARNING: %s - no banding materials" % why)
+            elif codes is None:
+                band_mats = None
+                band_notes.append("WARNING: banded, but no banding type on "
+                                  "BANDTYPE - no banding materials")
+            else:
+                band_mats, mat_notes = band_materials(facing, codes,
+                                                      band_mapping)
+                band_notes.extend(mat_notes)
+
         entries.append((path, brep, ident, qty, material, along_grain,
-                        explicit, bands, band_notes, panel_name))
+                        explicit, bands, band_notes, panel_name, band_mats))
         n += 1
 
-# DIR, MAT, PNAME, BAND and PLN run part for part with B. A list of another
-# length still works -- the parts past its end are along the grain, with no
-# material, no name and no banding -- but it is almost always a wiring
-# mistake, so it is said out loud.
+# DIR, MAT, PNAME, BAND, PLN and BANDTYPE run part for part with B. A list
+# of another length still works -- the parts past its end are along the
+# grain, with no material, no name and no banding -- but it is almost always
+# a wiring mistake, so it is said out loud.
 for label, values in (("DIR", directions), ("MAT", materials),
                       ("PNAME", panel_names), ("BAND", patterns),
-                      ("PLN", planes)):
+                      ("PLN", planes), ("BANDTYPE", band_codes)):
     if values and len(values) != n:
         INFO.Add("WARNING: %d part%s but %d value%s on %s - %s takes one "
                  "value per part, in the same order"
@@ -2295,11 +2546,13 @@ for i, entry in enumerate(entries):
             first = entries[groups[g][0]]
             # Material, grain and banding are part of what makes two pieces
             # the same: the very same shape cut from another board, turned
-            # across the grain or banded on other edges, is a piece of its
-            # own however well the solids match.
+            # across the grain or banded on other edges, or with another
+            # banding material, is a piece of its own however well the
+            # solids match.
             if (other is not None and other[0] == sig[0]
                     and first[4] == entry[4] and first[5] == entry[5]
                     and same_bands(first[7], entry[7])
+                    and same_band_mats(first[10], entry[10])
                     and shape_mismatch(other, sig) is None):
                 home = g
                 break
@@ -2324,11 +2577,16 @@ for i, entry in enumerate(entries):
                 why = ("it is laid %s the grain here and %s it there"
                        % ("along" if entry[5] else "across",
                           "along" if first[5] else "across"))
-            elif why is None:
+            elif why is None and not same_bands(first[7], entry[7]):
                 why = ("it is banded %s here and %s there"
                        % (bands_text(entry[7]), bands_text(first[7])))
+            elif why is None:
+                why = ("it is banded %s here and %s there"
+                       % (band_mats_text(entry[10]),
+                          band_mats_text(first[10])))
             elif (first[4] != entry[4] or first[5] != entry[5]
-                  or not same_bands(first[7], entry[7])):
+                  or not same_bands(first[7], entry[7])
+                  or not same_band_mats(first[10], entry[10])):
                 continue            # another shape and another piece anyway
             apart[len(groups)] = (g, why)
             break
@@ -2336,7 +2594,7 @@ for i, entry in enumerate(entries):
     shapes.append(sig)
 
 # Folding copies in must not eat the numbers of the pieces after them, so the
-# programs are numbered by group: one number per program, 0, 1, 2 ... with no
+# programs are numbered by group: one number per program, 1, 2, 3 ... with no
 # gaps. An ID wired on ID is the piece's own and is left alone.
 idents = []                         # per group, what its programs are named
 for g, members in enumerate(groups):
@@ -2346,12 +2604,12 @@ for g, members in enumerate(groups):
     copies = [entries[i] for i in members[1:]]
     qty = sum(entries[i][3] for i in members)
     rows = name_rows([entries[i] for i in members])
-    number = g                      # which program this is, counting from zero
+    number = g + FIRST_ID           # which program this is
     if not explicit:
         ident = str(number)
     idents.append(ident)
     try:
-        setups = brep_to_setups(brep, entry[7], entry[8])
+        setups = brep_to_setups(brep, entry[7], entry[8], entry[10])
         for mark, part in setups:
             name = file_name(ident, part, mark, qty)
             if name in taken:
@@ -2369,8 +2627,9 @@ for g, members in enumerate(groups):
                           rows), path)
         first = setups[0][1]
         for panel_name, row_qty in rows:
-            TABLE.Add(table_row(material, number, first.lx, first.ly,
-                                along_grain, row_qty, panel_name), GH_Path(0))
+            TABLE.Add(table_row(material, ident, first.lx, first.ly,
+                                along_grain, row_qty, panel_name,
+                                first.band_mats), GH_Path(0))
     except Exception as exc:
         MPR.Add(None, path)
         NAME.Add(None, path)
@@ -2379,9 +2638,16 @@ for g, members in enumerate(groups):
         # list, sized from its bounding box.
         try:
             lx, ly = panel_size(brep)
+            # Its banding materials as they would lie face up and long
+            # side to X, the way panel_size reads the piece.
+            box = brep.GetBoundingBox(True)
+            quarter = LONG_X and (box.Max.X - box.Min.X
+                                  < box.Max.Y - box.Min.Y - GEO_TOL)
+            edge_mats = band_mat_edges(entry[10], quarter, "B", False)
             for panel_name, row_qty in rows:
-                TABLE.Add(table_row(material, number, lx, ly, along_grain,
-                                    row_qty, panel_name), GH_Path(0))
+                TABLE.Add(table_row(material, ident, lx, ly, along_grain,
+                                    row_qty, panel_name, edge_mats),
+                          GH_Path(0))
         except Exception:
             pass
     if g in apart:

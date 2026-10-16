@@ -131,6 +131,8 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `PNAME` | str | **List** | panel name per part, for the cut list — optional |
 | input | `BAND` | str | **List** | edge banding per part, `"0011"` — optional |
 | input | `PLN` | Plane | **List** | each part's own plane — needed wherever `BAND` bands an edge |
+| input | `BANDTYPE` | str | **List** | banding material code per side, `"1221"` — optional |
+| input | `BAND_MAP` | str | **List** | what each code stands for, `"ABS 22/1=1"` — optional |
 | output | `MPR` | — | | one whole program per setup, line endings embedded |
 | output | `NAME` | — | | the file name for each program |
 | output | `INFO` | — | | one report per part |
@@ -142,13 +144,15 @@ only `B` wired; everything else may be left off.
 
 `ID` and `QTY` can each be wired either branch-for-branch with `B`, or as one
 flat list in part order. With no `ID` the programs are simply numbered in the
-order they are written — `0`, `1`, `2` … — with no gaps, however many solids
-were folded together.
+order they are written — `1`, `2`, `3` … — with no gaps, however many solids
+were folded together. `FIRST_ID` is where the count starts; it is `1` so the
+file names match the `Nr.` of the Excel cut list.
 
-`DIR`, `MAT`, `PNAME`, `BAND` and `PLN` are different: they are plain lists as long as
-the list of parts, read straight through in the order the parts arrive on
-`B`. See [Material, grain and the cut list](#material-grain-and-the-cut-list)
-and [Edge banding](#edge-banding).
+`DIR`, `MAT`, `PNAME`, `BAND`, `PLN` and `BANDTYPE` are different: they are
+plain lists as long as the list of parts, read straight through in the order
+the parts arrive on `B`. `BAND_MAP` is a list of its own, read whole. See
+[Material, grain and the cut list](#material-grain-and-the-cut-list),
+[Edge banding](#edge-banding) and [Banding materials](#banding-materials).
 
 ### What the machine can reach
 
@@ -411,9 +415,10 @@ over its vertices rather than a full conversion.
 Two solids count as the same shape when their vertices, and the radius and
 axis of every cylindrical face, measure the same from the corner of their own
 bounding boxes, within `DUP_TOL`, **and** they carry the same material, the
-same grain direction and the same banding — the very same shape cut from
-another board, laid across the grain or banded on other edges, is a piece of
-its own however well the solids match. Banding is compared on the sides of
+same grain direction and the same banding, materials included — the very
+same shape cut from another board, laid across the grain, banded on other
+edges or banded with another material, is a piece of its own however well the
+solids match. Banding is compared on the sides of
 the solid as it lies, not on the pattern text, so two copies whose `1010`
 patterns are read against planes turned 180° apart band the same two sides
 and fold together. Position is therefore irrelevant — copies laid out across
@@ -453,9 +458,10 @@ the two apart: the material, the grain, the banding, a different count of
 vertices or faces, or the one measurement that is out, with both values:
 
 ```
-1   same size as 0 but not folded into it: the flat face 7 has its box min Z at 6.725 here, 6.705 there - 0.02 mm apart (DUP_TOL is 0.01 mm)
-1   same size as 0 but not folded into it: it is cut from oak here and base there (DUP_TOL is 0.01 mm)
-2   same size as 0 but not folded into it: it is banded on the -X side here and on the -X and +X sides there (DUP_TOL is 0.01 mm)
+2   same size as 1 but not folded into it: the flat face 7 has its box min Z at 6.725 here, 6.705 there - 0.02 mm apart (DUP_TOL is 0.01 mm)
+2   same size as 1 but not folded into it: it is cut from oak here and base there (DUP_TOL is 0.01 mm)
+3   same size as 1 but not folded into it: it is banded on the -X side here and on the -X and +X sides there (DUP_TOL is 0.01 mm)
+4   same size as 1 but not folded into it: it is banded with ABS 22/1 on -Y here and with ABS 36/1 on -Y there (DUP_TOL is 0.01 mm)
 ```
 
 ### Material, grain and the cut list
@@ -478,14 +484,15 @@ Both feed the identical-panel test above, and both feed `TABLE`, the cut list:
 a header line and then one line per piece.
 
 ```
-Material;ID;Lungime;Latime;Cantitate;Denumire
-base;0;480;232;1;Bottom
-base;1;560;300;1;Side left
-base;1;560;300;1;Side right
+Material;ID;Lungime;Latime;Cantitate;Denumire;L-1;L-2;W-1;W-2
+base;1;480;232;1;Bottom;ABS 22/1;;;
+base;2;560;300;1;Side left;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
+base;2;560;300;1;Side right;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
 ```
 
-`ID` is which program the line is for, counting from zero, and is the same
-number the file name carries. Solids folded into one program share that one
+`ID` is which program the line is for — the very ID the file name starts
+with: counted from `FIRST_ID` (1), or the piece's own when it came in on
+`ID`. Solids folded into one program share that one
 number, and the numbering runs on without gaps. `Lungime` is the dimension
 along the grain — the long side of the panel unless `DIR` said otherwise. A
 part the converter throws out still gets a line, sized from its bounding box,
@@ -507,6 +514,10 @@ folded-in copy's line names it too.
 `DIR` changes the cut list only, never the program: the machine has no notion
 of grain, so the sizes swap on the sheet while the holes stay exactly where
 the model put them.
+
+`L-1` … `W-2` are the banding materials — see
+[Banding materials](#banding-materials). They are empty when `BANDTYPE` is
+not wired.
 
 ### Edge banding
 
@@ -596,7 +607,7 @@ side is on *in that placement*, the same edge the bores beside it are
 drilled from. `INFO` names them per setup:
 
 ```
-0   600 x 300 x 18 mm   x1   2 files
+1   600 x 300 x 18 mm   x1   2 files
   B  face up                          1 x BohrVert, banding marked on the right edge
   F  turned over                      1 x BohrVert, banding marked on the right edge
   note: banding 0001: the right side of the plane
@@ -625,6 +636,52 @@ and `MAT` are.
 Because the origin is not read, a plane that belongs to another panel — or to
 this one where it stood in the assembly — is **not** caught if it happens to
 face the same way. Keep `BAND`, `PLN` and `B` in the same order.
+
+### Banding materials
+
+`BAND` says where a piece is banded; `BANDTYPE` and `BAND_MAP` say with what.
+
+| Input | Meaning |
+| --- | --- |
+| `BANDTYPE` | `"1221"`, `"0111"`, `"0212"` … — one code per side, per part, in the same order as `BAND`: bottom, left, top, right of the plane. Wire it as **text**, like `BAND`. |
+| `BAND_MAP` | `"ABS 22/0.5=0"`, `"ABS 22/1=1"`, `"ABS 36/1=2"` … — a material and the one-character code that stands for it. Split at the last `=`; one item may hold several lines. |
+
+**Only the sides `BAND` bands are read.** With `BAND` `1001` and `BANDTYPE`
+`1221`, the bottom is code 1 and the right code 1; the 2s under `BAND`'s 0s
+are not looked at. So `0` is a material code like any other — it does not
+mean "not banded"; `BAND` alone says that.
+
+**The materials follow the marks.** Each is hung on the same world side as
+its mark and carried through the same turns, so it names the edge the mark is
+on in every program. `INFO` adds it to each setup's marks, and each part's
+note says which side got which:
+
+```
+1   600 x 300 x 18 mm   x1   1 file
+  B  face up                          1 x BohrVert, banding marked on the lower edge (ABS 22/1) and right edge (ABS 36/1)
+  note: banding 1001: the bottom and right sides of the plane
+  note: banding type 1222: ABS 22/1 on the bottom side; ABS 36/1 on the right side
+```
+
+The cut list carries them in `L-1`, `L-2`, `W-1` and `W-2`. `L-1` and `L-2`
+are the edges along `Lungime`, `W-1` and `W-2` those along `Latime`, as the
+first program lies: along the grain `L-1` is its lower edge, `L-2` the upper,
+`W-1` the left and `W-2` the right; across the grain the two pairs swap. An
+edge with no banding, or no material, is empty.
+
+**The machining is untouched.** The marks, the setups, the macros and the
+`.mpr` text are exactly what they are with `BANDTYPE` unwired. What the
+materials do change is which solids fold together: two copies of one shape
+banded with different materials are two pieces, as with `MAT`.
+
+**Nothing is guessed.** The materials are left out, with a `WARNING` in
+`INFO`, when a banded side's code is not on `BAND_MAP`, when a `BANDTYPE` is
+not four codes (`111` — a type wired as a number has lost its zero), or when
+`BANDTYPE` is wired but a banded part has no type on it. The marks are still
+written. A `BAND_MAP` item that is not `<material>=<code>` with a
+one-character code, or a code given twice for two materials, is reported and
+the first one kept. A part whose banding cannot be read gets no marks and so
+no materials either.
 
 ### File names
 
@@ -678,6 +735,7 @@ the piece for the gripper — not milled.
 | `STRICT` | on | leave bores the head cannot reach out of the program; off writes them anyway |
 | `DIA_TOL` | 0.2 | how far a measured diameter may sit from a listed one and still count as that bit |
 | `EXT` | `.mpr` | appended to every `NAME` |
+| `FIRST_ID` | 1 | the number of the first program when `ID` is unwired |
 | `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
 | `SAW_ALONG` | `"X"` | the directions the saw unit can run |
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
@@ -725,7 +783,7 @@ Code 128 of the same name below it.
 
 ```
 +--------------------------+
-|      0_600x400-F_4       |
+|      1_600x400-F_4       |
 |                          |
 |     || ||| | || |||      |
 +--------------------------+
@@ -840,12 +898,16 @@ The sheet:
 row 1    the project name, bold, across A:Q
 row 3    Material: PAL 8681 SM                                COMENTARII
 row 4    Nr. | Lungime (L) | Latime (W) | cant. | L-1 ×3 | L-2 ×3 | W-1 ×3 | W-2 ×3 |
-row 5…   1   | 490         | 100        | 4     |                                | Plintă
+row 5…   1   | 490         | 100        | 4     | ABS 22/1 | ABS 22/1 | 1 | …  | Plintă
 ```
 
-* One block per material, in `CAT`'s order, two empty rows apart. `Nr.`
-  counts from 1 in each block; the lines keep the cut list's order, which is
-  the program `ID`s'.
+* One block per material, in `CAT`'s order, two empty rows apart; the lines
+  keep the cut list's order, which is the program `ID`s'.
+* **`Nr.` is the program `ID`** — the number the `.mpr` file name starts with,
+  so `7` is `7_480x232-B_1.mpr`. It does not count rows: the lines of one
+  program share its number, and a block starts at its first program's
+  number. An `ID` wired as text (`106F`) is written as text; a line with no
+  `ID` gets an empty `Nr.`.
 * `Lungime`, `Latime` and `cant.` are the cut list's `Lungime`, `Latime` and
   `Cantitate` unchanged; `COMENTARII` is `Denumire`, the panel name. The
   program `ID` is kept in the data, so a row can be traced to its `.mpr`. A
@@ -854,8 +916,21 @@ row 5…   1   | 490         | 100        | 4     |                             
   category the cut list uses but `CAT` does not name still gets its block,
   titled with the category itself, and `INFO` warns — that title is a stand-in,
   not a material name. A category on `CAT` that no line uses gets no block.
-* **The edge columns are left empty.** The cut list says nothing about
-  banding, and an empty cell is safer than a guess.
+* **The edges** come from the cut list's `L-1` … `W-2` — the banding
+  materials. Their three cells are the ones the cutting software's Excel
+  import reads for each facing (*Облицовка*):
+
+  | Cell | | Example |
+  | --- | --- | --- |
+  | *Наим.* | the material, as on `BAND_MAP` | `ABS 22/0.5` |
+  | *Обозначение* | the material again | `ABS 22/0.5` |
+  | *Толщина* | the number after the last `/` in it | `0.5` |
+
+  A name with no number after a `/` leaves *Толщина* empty, with a warning
+  in `INFO` — the import may take the thickness off the panel size, so a
+  guess there would cut the panel wrong. An unbanded edge, or a cut list
+  from before these columns, leaves all three cells empty. With the import
+  set to columns 5–16 for L1–W2, as the shop's is, the cells line up.
 
 The header line is found by its field names, so a cut list with its columns
 moved still reads; without one, the columns are taken in `gh_brep2mpr`'s
