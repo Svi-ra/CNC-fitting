@@ -9,6 +9,59 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.14.0] — 2026-10-16
+
+The cut list goes to Excel: `Tools/gh_cutlist2json.py` lays it out as the
+shop's Excel cut lists are, and `Tools/CutListImport.bas` builds the sheet.
+
+### Added
+
+- **`gh_cutlist2json.py`**, a Grasshopper component. `TABLE` from
+  `gh_brep2mpr.py` (or the CSV as text), `CAT` and `MATERIAL` — the exact
+  material name for each category — and `PROJECT` in; one JSON out, no file
+  written. The layout follows *1. Mobilier birou copii str. Victoriei 8.xlsx*:
+  the project name across A:Q, then a block per material in `CAT`'s order,
+  two empty rows apart — `Material: <name>` and `COMENTARII`, the header row
+  `Nr. | Lungime (L) | Latime (W) | cant. | L-1 | L-2 | W-1 | W-2` (three cells
+  per edge), then one row per cut list line with the sizes and quantity
+  unchanged and the panel name as its comment. The program `ID` is kept in
+  the data. The JSON carries the data by material (`sections`, readable by
+  Power Query) and the same rows placed on the grid with their styles,
+  outlines, merges, widths and page setup (`sheet`).
+- **The component refuses Item access.** On Item access Grasshopper runs a
+  script once per item, which turned a 15-line cut list into 15 one-line
+  JSON documents that did not import. If `TABLE`, `CAT` or `MATERIAL` is on
+  Item access the component now turns red, names which, and gives no JSON.
+- **`CutListImport.bas`**, an Excel VBA module: `ImportCutList` builds the
+  sheet in a new workbook, `ImportCutListHere` on a new sheet of the open
+  one. Text stays text, UTF-8 is read as UTF-8, and a file that is not a cut
+  list — or holds several, one after another — is turned away with the
+  reason. Its own JSON reader; Windows Excel only.
+- `Examples/CutList/sample_cutlist.json`, a small cut list to try the importer
+  on.
+
+### Known limits
+
+- The edge columns `L-1` … `W-2` stay empty: the cut list carries no banding.
+- Where the reference workbook is uneven — the fill of its first material row
+  stopping at column J, a few stray medium lines — the generated sheet keeps
+  one even pattern instead.
+
+### Tested
+
+- The component with Grasshopper stubbed, on a sample cut list and on the
+  15 lines of the Comoda test: blocks, numbering, warnings for unnamed and
+  unused categories, unreadable lines, a reordered header, a byte order mark,
+  and the Item-access error on each of the three inputs.
+- The JSON rebuilt into an `.xlsx` with openpyxl and compared cell by cell
+  with the reference: the borders drawn, fills and alignment agree except
+  where the reference itself is uneven.
+- The importer's JSON reader, carried over to VBScript and run under
+  `cscript` against Python's reading of the same files — escapes, surrogate
+  pairs, exponents, diacritics, and four broken files, each refused at the
+  right character. The import itself was run in Excel by the user, on the
+  regenerated Comoda cut list.
+
 ## [0.13.0] — 2026-10-16
 
 `Tools/gh_brep2mpr.py` names setups from the operator's side, drills marks

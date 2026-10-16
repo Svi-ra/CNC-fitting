@@ -93,6 +93,14 @@ sit on the edge that is really banded, and they change nothing that is
 machined.
 See [Tools/README.md](Tools/README.md#grasshopper-component).
 
+The cut list goes on to Excel through a second component,
+`Tools/gh_cutlist2json.py`: give it the exact material name for each
+category and the project name, and it returns one JSON that lays the list
+out the way the shop's Excel cut lists are — a block per material, the panel
+names as comments. `Tools/CutListImport.bas`, imported into Excel's VBA
+editor, turns that JSON into the formatted sheet. See
+[Tools/README.md](Tools/README.md#excel-cut-list).
+
 ## Documentation
 
 | File | Contents |

@@ -806,9 +806,100 @@ lpr -S 192.168.1.50 -P raw labels.zpl
 To see a label before there is a printer, paste `ZPL` into a ZPL viewer
 (labelary.com renders it and reports what is wrong with it).
 
+## Excel cut list
+
+The cut list `gh_brep2mpr.py` returns on `TABLE` goes to the shop as an
+Excel sheet laid out like its existing ones (the reference is *1. Mobilier
+birou copii str. Victoriei 8.xlsx*). Two pieces do it:
+`gh_cutlist2json.py` in Grasshopper turns the cut list into one JSON, and
+`CutListImport.bas` in Excel turns the JSON into the formatted sheet.
+
+### The component
+
+`gh_cutlist2json.py` is another **Rhino 8 Script component set to Python 3**:
+
+| | Name | Type | Access | |
+| --- | --- | --- | --- | --- |
+| input | `TABLE` | str | **Tree** | the cut list — `TABLE` off `gh_brep2mpr`, or the CSV as one text |
+| input | `CAT` | str | **List** | the material categories, as `MAT` carried them (`base`, `interior` …) |
+| input | `MATERIAL` | str | **List** | the exact material name for each, in the same order (`PAL 8681 SM` …) |
+| input | `PROJECT` | str | Item | the project name, the sheet's title |
+| output | `JSON` | — | | the whole document, one string |
+| output | `INFO` | — | | the report |
+
+**Set the access as above.** A new Script input starts on Item access, and
+on Item access Grasshopper runs the script once per item: a 15-line cut list
+comes out as 15 one-line JSON documents, which saved together are not JSON at
+all — and each run sees only one material name. So if `TABLE`, `CAT` or
+`MATERIAL` is left on Item access the component turns red, names which, and
+gives no JSON. List access works as well as Tree.
+
+The sheet:
+
+```
+row 1    the project name, bold, across A:Q
+row 3    Material: PAL 8681 SM                                COMENTARII
+row 4    Nr. | Lungime (L) | Latime (W) | cant. | L-1 ×3 | L-2 ×3 | W-1 ×3 | W-2 ×3 |
+row 5…   1   | 490         | 100        | 4     |                                | Plintă
+```
+
+* One block per material, in `CAT`'s order, two empty rows apart. `Nr.`
+  counts from 1 in each block; the lines keep the cut list's order, which is
+  the program `ID`s'.
+* `Lungime`, `Latime` and `cant.` are the cut list's `Lungime`, `Latime` and
+  `Cantitate` unchanged; `COMENTARII` is `Denumire`, the panel name. The
+  program `ID` is kept in the data, so a row can be traced to its `.mpr`. A
+  program whose copies carry different names stays a row per name.
+* The material name is printed exactly as it came in on `MATERIAL`. A
+  category the cut list uses but `CAT` does not name still gets its block,
+  titled with the category itself, and `INFO` warns — that title is a stand-in,
+  not a material name. A category on `CAT` that no line uses gets no block.
+* **The edge columns are left empty.** The cut list says nothing about
+  banding, and an empty cell is safer than a guess.
+
+The header line is found by its field names, so a cut list with its columns
+moved still reads; without one, the columns are taken in `gh_brep2mpr`'s
+order. A line with too few fields, or a size or quantity that is not a
+number, is left out and named in `INFO`.
+
+The JSON has two halves. `sections` is the data, a block per material with
+its rows — Excel's *Data › Get Data › From File › From JSON* reads it as it
+is. `sheet` is the same rows already placed on the grid: the cells of each
+row from column A, the column widths and taller rows, named styles (font,
+fill, alignment, borders, number format), which style goes on which range,
+the ranges boxed with a medium line, the merges and the page — landscape A4,
+one page wide, the reference's margins. Like the others, the component
+writes no file: save `JSON` as a `.json`, UTF-8, downstream.
+
+### The importer
+
+`CutListImport.bas` is an Excel VBA module. In Excel press Alt+F11, then
+*File › Import File…* and pick it; import it into `PERSONAL.XLSB` to have it
+in every workbook. Then, from Alt+F8:
+
+| Macro | |
+| --- | --- |
+| `ImportCutList` | asks for a `.json` and lays it out in a new workbook |
+| `ImportCutListHere` | the same, on a new sheet at the end of the open workbook — `(2)`, `(3)` … if the name is taken |
+
+`ImportCutListFile(path, [workbook])` is the same import for other code.
+
+It reads only `sheet`, and builds it in order: the values, then the widths
+and heights, the styles, the outlines over them, the merges, the page. Text
+goes in as text — a name like `1/2` or `12-3` is not turned into a date — and
+the file is read as UTF-8, so diacritics survive. A file that is not a cut
+list, or a newer version than the module knows, is turned away; one that
+breaks off halfway takes its half-made sheet with it. A file holding several
+cut lists one after another — the component run once per line — is named as
+such, with the fix.
+
+It carries its own JSON reader, so there is nothing to install, but it needs
+Windows Excel: the file is read with `ADODB.Stream` and the JSON kept in
+`Scripting.Dictionary`, neither of which a Mac has.
+
 ## ShapeDiver
 
-Both components are written to pass ShapeDiver's script review
+All three components are written to pass ShapeDiver's script review
 ([forbidden Grasshopper functionalities](https://help.shapediver.com/doc/forbidden-grasshopper-functionalities)):
 a definition there may not read from or write to the Rhino document, and may
 not read or save local files.
@@ -816,12 +907,15 @@ not read or save local files.
 * **Nothing reads the Rhino document.** `gh_brep2mpr.py` used to take its
   tolerance and units from `RhinoDoc.ActiveDoc`; it now has `TOL = 0.001` as
   a setting and assumes millimetres.
-* **Nothing touches the file system.** Both components return text only —
-  `MPR` and `NAME`, `ZPL` — and the files are made downstream: on ShapeDiver
-  by its export components, on the desktop by whatever writer you put there.
+* **Nothing touches the file system.** The components return text only —
+  `MPR` and `NAME`, `ZPL`, `JSON` — and the files are made downstream: on
+  ShapeDiver by its export components, on the desktop by whatever writer you
+  put there.
 * No sliders or other inputs are changed, no solution is rescheduled, and the
-  only imports are `math`, `Rhino` (for the Brep geometry) and Grasshopper's
-  data tree types.
+  only imports are `math`, `csv`, `json`, `Rhino` (for the Brep geometry) and
+  Grasshopper's data tree types. `gh_cutlist2json.py` reads its own inputs'
+  access settings off `ghenv.Component` and posts an error on itself — its
+  own component, nothing else in the definition.
 
 ## Limits — read this before the first cut
 

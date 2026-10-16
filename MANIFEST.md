@@ -3,8 +3,8 @@
 Working set for getting furniture parts from CAD onto a HOMAG/WEEKE CNC in
 woodWOP MPR format. It holds the two format references, a set of real and test
 CAD/CAM files, a converter that turns DXF solids directly into MPR programs,
-and the Grasshopper components that do the same from Rhino and label the
-finished pieces.
+and the Grasshopper components that do the same from Rhino, label the
+finished pieces and lay their cut list out for Excel.
 
 - **Root:** `D:\CNC-fitting`
 - **Machine format:** woodWOP MPR 4.x (HOMAG/WEEKE), millimetres
@@ -20,6 +20,7 @@ CNC-fitting/
 ├─ Docs/                      format references (2 files)
 ├─ Examples/                  CAD sources, reference programs, output
 │  ├─ Banding/                shop programs carrying edge-banding marks
+│  ├─ CutList/                a sample Excel cut list JSON
 │  ├─ CAD-models/             the DXF/DWG sources
 │  │  └─ MPR/                 converter output (generated)
 │  ├─ Grasshopper/            the parametric model the DXFs come from
@@ -150,6 +151,21 @@ inside layout too. The woodWOP saves have single CRLF line endings; the
 `-wrong` file, a machine-side copy, doubles them — a blank line after every
 line — on purpose.
 
+### `Examples/CutList/` — the Excel cut list
+
+`sample_cutlist.json` is what `Tools/gh_cutlist2json.py` writes for a small
+test cut list: 8 lines over three categories (two named, one left unnamed on
+purpose, so its block is titled with the category), including a program
+whose copies carry two names and a 582.5 mm length. Run `ImportCutList` from
+`Tools/CutListImport.bas` on it to see the sheet without opening Rhino.
+
+The layout it reproduces is the shop's own workbook, *1. Mobilier birou copii
+str. Victoriei 8.xlsx* — kept outside the repository — a title row, then a
+block per material: `Material: …` and `COMENTARII`, a header row
+`Nr. | Lungime (L) | Latime (W) | cant. | L-1 ×3 | L-2 ×3 | W-1 ×3 | W-2 ×3`,
+then the panels, two empty rows between blocks. The header fill is theme
+accent 5 at 60 % lighter, `B7DEE8` on the 2007 Office theme.
+
 The shop CAD programs draw the older mark instead: `_s0.ply` in an 80 mm
 square near the edge, positions as expressions of `_BSX`/`_BSY`, no separator
 lines inside the block. Each also has a `<101 \Kommentar\` naming the edges
@@ -172,6 +188,8 @@ the Ø8 blind holes are dowels).
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, groove width and run, contour references. |
 | `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over, either of them possibly turned end for end — when one clamping cannot reach everything. Places each setup so a cut corner, rebate or pocket stays out of the gripper's ranked zones, even at the cost of a second setup. Writes boring and sawing only; a shaped outline is reported, not milled. Solids of the same shape, material, grain and banding are converted once, their quantities added up into the file name; a cut list comes out beside the programs, a line per panel name. File names carry `-B` (face up) or `-F` (turned over), for the side the operator sees. Edge banding, given as a pattern per part read clockwise on the part's own plane, is drawn as graphic comments on the banded edges of every setup, turned with the piece as its bores are. |
 | `Tools/gh_name2zpl.py` | Grasshopper Script component (Rhino 8, Python 3): panel names in, Code 128 labels out as one ZPL text, ready to save and send to the printer as bytes. Writes no file itself, so it passes ShapeDiver's review. Wired downstream of `gh_brep2mpr.py`'s `NAME`. Barcodes are `^BC`, the printer's own Code 128; the component lays the label out, sizes the bars to the stock and reports a name that will not fit or cannot be encoded. |
+| `Tools/gh_cutlist2json.py` | Grasshopper Script component (Rhino 8, Python 3): `gh_brep2mpr.py`'s cut list, the exact material name for each category and the project name in, one JSON out that lays the list out as the shop's Excel cut lists are — a block per material, the panel names as comments. Text only, no file. Turns red rather than run once per line when its list inputs are left on Item access. |
+| `Tools/CutListImport.bas` | Excel VBA module (Windows): `ImportCutList` / `ImportCutListHere` read that JSON and build the formatted sheet — values, widths, fills, borders, merges, page setup. Its own JSON reader; nothing to install beyond importing the `.bas`. |
 | `Tools/dxf2mpr.cmd` | Windows drag-and-drop wrapper; writes to an `MPR` sub-folder. |
 | `Tools/README.md` | Usage, the full feature→macro mapping, orientation rules, options and limits. |
 
@@ -201,8 +219,13 @@ Grasshopper (.gh)
       ├─ Tools/gh_brep2mpr.py ────────────────────► MPR text + names
       │     (Brep straight to MPR, no export at all)        │
       │            │                                        │
-      │            └─ Tools/gh_name2zpl.py ──► ZPL ──► label printer
-      │                 (the same names, as Code 128)       │
+      │            ├─ Tools/gh_name2zpl.py ──► ZPL ──► label printer
+      │            │    (the same names, as Code 128)       │
+      │            └─ Tools/gh_cutlist2json.py ──► JSON     │
+      │                 (TABLE, by material)   │            │
+      │                     Tools/CutListImport.bas         │
+      │                                        ▼            │
+      │                                  Excel cut list     │
       │                                                     │
       │  Pancake export                                     │
       ▼                                                     │

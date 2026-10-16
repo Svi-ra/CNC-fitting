@@ -10,6 +10,9 @@
 *.MPR  text eol=crlf
 *.var  text eol=crlf
 *.cmd  text eol=crlf
+# The VBA editor's File > Import reads an LF-only module wrong: its
+# Attribute VB_Name line comes in as code and the module goes unnamed.
+*.bas  text eol=crlf
 
 # Source and documentation: LF.
 *.py   text eol=lf

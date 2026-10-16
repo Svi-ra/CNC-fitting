@@ -1,0 +1,928 @@
+{
+ "format": "cnc-fitting cut list",
+ "version": 1,
+ "project": "Mobilier birou copii str. Victoriei 8",
+ "sheet": {
+  "name": "Lista",
+  "columns": [
+   {
+    "col": "A",
+    "width": 7.71
+   },
+   {
+    "col": "B",
+    "width": 12.71
+   },
+   {
+    "col": "C",
+    "width": 12.71
+   },
+   {
+    "col": "D",
+    "width": 7.71
+   },
+   {
+    "col": "E",
+    "width": 12.57
+   },
+   {
+    "col": "F",
+    "width": 12.57
+   },
+   {
+    "col": "G",
+    "width": 12.57
+   },
+   {
+    "col": "H",
+    "width": 13.0
+   },
+   {
+    "col": "I",
+    "width": 13.0
+   },
+   {
+    "col": "J",
+    "width": 13.0
+   },
+   {
+    "col": "K",
+    "width": 13.57
+   },
+   {
+    "col": "L",
+    "width": 13.57
+   },
+   {
+    "col": "M",
+    "width": 13.57
+   },
+   {
+    "col": "N",
+    "width": 12.71
+   },
+   {
+    "col": "O",
+    "width": 12.71
+   },
+   {
+    "col": "P",
+    "width": 12.71
+   },
+   {
+    "col": "Q",
+    "width": 77.57
+   }
+  ],
+  "heights": [
+   {
+    "row": 1,
+    "height": 15.75
+   },
+   {
+    "row": 3,
+    "height": 15.75
+   },
+   {
+    "row": 4,
+    "height": 15.75
+   },
+   {
+    "row": 12,
+    "height": 15.75
+   },
+   {
+    "row": 13,
+    "height": 15.75
+   },
+   {
+    "row": 18,
+    "height": 15.75
+   },
+   {
+    "row": 19,
+    "height": 15.75
+   }
+  ],
+  "styles": {
+   "title": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": true
+    },
+    "fill": "B7DEE8",
+    "align": {
+     "horizontal": "center",
+     "vertical": null
+    },
+    "border": null,
+    "number_format": "General"
+   },
+   "material": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": "B7DEE8",
+    "align": {
+     "horizontal": "left",
+     "vertical": null
+    },
+    "border": null,
+    "number_format": "General"
+   },
+   "band": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": "B7DEE8",
+    "align": {
+     "horizontal": null,
+     "vertical": null
+    },
+    "border": null,
+    "number_format": "General"
+   },
+   "comments": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": "B7DEE8",
+    "align": {
+     "horizontal": "center",
+     "vertical": null
+    },
+    "border": null,
+    "number_format": "General"
+   },
+   "head": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": "B7DEE8",
+    "align": {
+     "horizontal": "center",
+     "vertical": null
+    },
+    "border": {
+     "left": "thin",
+     "right": "thin",
+     "top": "thin",
+     "bottom": "thin"
+    },
+    "number_format": "General"
+   },
+   "nr": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": null,
+    "align": {
+     "horizontal": null,
+     "vertical": null
+    },
+    "border": {
+     "left": "thin",
+     "right": "thin",
+     "top": "thin",
+     "bottom": "thin"
+    },
+    "number_format": "General"
+   },
+   "number": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": null,
+    "align": {
+     "horizontal": "right",
+     "vertical": "center"
+    },
+    "border": {
+     "left": "thin",
+     "right": "thin",
+     "top": "thin",
+     "bottom": "thin"
+    },
+    "number_format": "General"
+   },
+   "edge": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": null,
+    "align": {
+     "horizontal": "left",
+     "vertical": null
+    },
+    "border": {
+     "left": "thin",
+     "right": "thin",
+     "top": "thin",
+     "bottom": "thin"
+    },
+    "number_format": "General"
+   },
+   "comment": {
+    "font": {
+     "name": "Calibri",
+     "size": 11,
+     "bold": false
+    },
+    "fill": null,
+    "align": {
+     "horizontal": "left",
+     "vertical": null
+    },
+    "border": {
+     "left": "thin",
+     "right": "thin",
+     "top": "thin",
+     "bottom": "thin"
+    },
+    "number_format": "General"
+   }
+  },
+  "values": [
+   {
+    "row": 1,
+    "cells": [
+     "Mobilier birou copii str. Victoriei 8",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ]
+   },
+   {
+    "row": 3,
+    "cells": [
+     "Material: PAL 8681 SM",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "COMENTARII"
+    ]
+   },
+   {
+    "row": 4,
+    "cells": [
+     "Nr.",
+     "Lungime (L)",
+     "Latime (W)",
+     "cant.",
+     "L-1",
+     "L-1",
+     "L-1",
+     "L-2",
+     "L-2",
+     "L-2",
+     "W-1",
+     "W-1",
+     "W-1",
+     "W-2",
+     "W-2",
+     "W-2",
+     null
+    ]
+   },
+   {
+    "row": 5,
+    "cells": [
+     1,
+     490,
+     100,
+     4,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Plintă"
+    ]
+   },
+   {
+    "row": 6,
+    "cells": [
+     2,
+     591,
+     70,
+     2,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Traversă"
+    ]
+   },
+   {
+    "row": 7,
+    "cells": [
+     3,
+     2744,
+     528,
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Blat (PAZ 9x4)"
+    ]
+   },
+   {
+    "row": 8,
+    "cells": [
+     4,
+     612,
+     580,
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Side left"
+    ]
+   },
+   {
+    "row": 9,
+    "cells": [
+     5,
+     612,
+     580,
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Side right"
+    ]
+   },
+   {
+    "row": 12,
+    "cells": [
+     "Material: PAL U702 ST9",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "COMENTARII"
+    ]
+   },
+   {
+    "row": 13,
+    "cells": [
+     "Nr.",
+     "Lungime (L)",
+     "Latime (W)",
+     "cant.",
+     "L-1",
+     "L-1",
+     "L-1",
+     "L-2",
+     "L-2",
+     "L-2",
+     "W-1",
+     "W-1",
+     "W-1",
+     "W-2",
+     "W-2",
+     "W-2",
+     null
+    ]
+   },
+   {
+    "row": 14,
+    "cells": [
+     1,
+     564,
+     145,
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Raft"
+    ]
+   },
+   {
+    "row": 15,
+    "cells": [
+     2,
+     582.5,
+     124,
+     1,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ]
+   },
+   {
+    "row": 18,
+    "cells": [
+     "Material: fronts",
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "COMENTARII"
+    ]
+   },
+   {
+    "row": 19,
+    "cells": [
+     "Nr.",
+     "Lungime (L)",
+     "Latime (W)",
+     "cant.",
+     "L-1",
+     "L-1",
+     "L-1",
+     "L-2",
+     "L-2",
+     "L-2",
+     "W-1",
+     "W-1",
+     "W-1",
+     "W-2",
+     "W-2",
+     "W-2",
+     null
+    ]
+   },
+   {
+    "row": 20,
+    "cells": [
+     1,
+     530,
+     177,
+     2,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "Front sertar"
+    ]
+   }
+  ],
+  "formats": [
+   {
+    "range": "A1:Q1",
+    "style": "title"
+   },
+   {
+    "range": "A3:D3",
+    "style": "material"
+   },
+   {
+    "range": "E3:P3",
+    "style": "band"
+   },
+   {
+    "range": "Q3:Q4",
+    "style": "comments"
+   },
+   {
+    "range": "A4:P4",
+    "style": "head"
+   },
+   {
+    "range": "A5:A9",
+    "style": "nr"
+   },
+   {
+    "range": "B5:D9",
+    "style": "number"
+   },
+   {
+    "range": "E5:P9",
+    "style": "edge"
+   },
+   {
+    "range": "Q5:Q9",
+    "style": "comment"
+   },
+   {
+    "range": "A12:D12",
+    "style": "material"
+   },
+   {
+    "range": "E12:P12",
+    "style": "band"
+   },
+   {
+    "range": "Q12:Q13",
+    "style": "comments"
+   },
+   {
+    "range": "A13:P13",
+    "style": "head"
+   },
+   {
+    "range": "A14:A15",
+    "style": "nr"
+   },
+   {
+    "range": "B14:D15",
+    "style": "number"
+   },
+   {
+    "range": "E14:P15",
+    "style": "edge"
+   },
+   {
+    "range": "Q14:Q15",
+    "style": "comment"
+   },
+   {
+    "range": "A18:D18",
+    "style": "material"
+   },
+   {
+    "range": "E18:P18",
+    "style": "band"
+   },
+   {
+    "range": "Q18:Q19",
+    "style": "comments"
+   },
+   {
+    "range": "A19:P19",
+    "style": "head"
+   },
+   {
+    "range": "A20:A20",
+    "style": "nr"
+   },
+   {
+    "range": "B20:D20",
+    "style": "number"
+   },
+   {
+    "range": "E20:P20",
+    "style": "edge"
+   },
+   {
+    "range": "Q20:Q20",
+    "style": "comment"
+   }
+  ],
+  "outlines": [
+   {
+    "range": "A1:Q1",
+    "weight": "medium"
+   },
+   {
+    "range": "A3:D3",
+    "weight": "medium"
+   },
+   {
+    "range": "E3:P3",
+    "weight": "medium"
+   },
+   {
+    "range": "Q3:Q4",
+    "weight": "medium"
+   },
+   {
+    "range": "A4:D4",
+    "weight": "medium"
+   },
+   {
+    "range": "E4:P4",
+    "weight": "medium"
+   },
+   {
+    "range": "A12:D12",
+    "weight": "medium"
+   },
+   {
+    "range": "E12:P12",
+    "weight": "medium"
+   },
+   {
+    "range": "Q12:Q13",
+    "weight": "medium"
+   },
+   {
+    "range": "A13:D13",
+    "weight": "medium"
+   },
+   {
+    "range": "E13:P13",
+    "weight": "medium"
+   },
+   {
+    "range": "A18:D18",
+    "weight": "medium"
+   },
+   {
+    "range": "E18:P18",
+    "weight": "medium"
+   },
+   {
+    "range": "Q18:Q19",
+    "weight": "medium"
+   },
+   {
+    "range": "A19:D19",
+    "weight": "medium"
+   },
+   {
+    "range": "E19:P19",
+    "weight": "medium"
+   }
+  ],
+  "merges": [
+   "A1:Q1",
+   "A3:D3",
+   "Q3:Q4",
+   "A12:D12",
+   "Q12:Q13",
+   "A18:D18",
+   "Q18:Q19"
+  ],
+  "page": {
+   "orientation": "landscape",
+   "paper": "A4",
+   "fit_width": 1,
+   "fit_height": 0,
+   "margins_in": {
+    "left": 0.71,
+    "right": 0.71,
+    "top": 0.75,
+    "bottom": 0.75,
+    "header": 0.31,
+    "footer": 0.31
+   }
+  }
+ },
+ "sections": [
+  {
+   "category": "base",
+   "material": "PAL 8681 SM",
+   "title": "Material: PAL 8681 SM",
+   "first_row": 3,
+   "last_row": 9,
+   "pieces": 9,
+   "rows": [
+    {
+     "nr": 1,
+     "id": "0",
+     "length": 490,
+     "width": 100,
+     "qty": 4,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Plintă"
+    },
+    {
+     "nr": 2,
+     "id": "1",
+     "length": 591,
+     "width": 70,
+     "qty": 2,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Traversă"
+    },
+    {
+     "nr": 3,
+     "id": "3",
+     "length": 2744,
+     "width": 528,
+     "qty": 1,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Blat (PAZ 9x4)"
+    },
+    {
+     "nr": 4,
+     "id": "4",
+     "length": 612,
+     "width": 580,
+     "qty": 1,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Side left"
+    },
+    {
+     "nr": 5,
+     "id": "4",
+     "length": 612,
+     "width": 580,
+     "qty": 1,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Side right"
+    }
+   ]
+  },
+  {
+   "category": "interior",
+   "material": "PAL U702 ST9",
+   "title": "Material: PAL U702 ST9",
+   "first_row": 12,
+   "last_row": 15,
+   "pieces": 2,
+   "rows": [
+    {
+     "nr": 1,
+     "id": "2",
+     "length": 564,
+     "width": 145,
+     "qty": 1,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Raft"
+    },
+    {
+     "nr": 2,
+     "id": "5",
+     "length": 582.5,
+     "width": 124,
+     "qty": 1,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": ""
+    }
+   ]
+  },
+  {
+   "category": "fronts",
+   "material": "fronts",
+   "title": "Material: fronts",
+   "first_row": 18,
+   "last_row": 20,
+   "pieces": 2,
+   "rows": [
+    {
+     "nr": 1,
+     "id": "6",
+     "length": 530,
+     "width": 177,
+     "qty": 2,
+     "edges": {
+      "L-1": null,
+      "L-2": null,
+      "W-1": null,
+      "W-2": null
+     },
+     "comment": "Front sertar"
+    }
+   ]
+  }
+ ]
+}
