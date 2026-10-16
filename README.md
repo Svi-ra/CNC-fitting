@@ -64,8 +64,10 @@ It also knows what the machine is fitted with — which diameters the vertical
 array carries, which bit sits on each side for horizontal bores, and how the
 grooving saw runs. Sawn grooves are read off the solid alongside the bores. A
 part that cannot all be reached in one clamping comes out as two programs, one
-face up and one for the piece turned over, named `-F` and `-B`. Anything the
-machine still cannot reach is reported rather than quietly written.
+face up and one for the piece turned over, named `-B` and `-F` for the side
+the operator sees — with the face up under the head, that is the back.
+Anything the machine still cannot reach is reported rather than quietly
+written.
 
 It also places each piece so the machine can **hold** it. Each setup may be
 turned end for end as well as over, and of the placements that reach the
@@ -78,7 +80,10 @@ Panels of the same shape are converted once however many times they appear:
 the quantities are added up and the file is named for the total. Material and
 grain direction come in beside the geometry — panels of the same shape cut
 from different board, or laid across the grain, stay separate pieces — and the
-component also returns the cut list, `Material;ID;Lungime;Latime;Cantitate`.
+component also returns the cut list,
+`Material;ID;Lungime;Latime;Cantitate;Denumire`. Each panel's name comes in
+the same way and is kept through the folding: copies of one shape that carry
+different names share a program but keep a cut list line each.
 
 Edge banding comes in the same way: a pattern per part (`0011`, `1010` …,
 read clockwise on the part's own plane) becomes a graphic comment on each

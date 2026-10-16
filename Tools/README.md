@@ -128,6 +128,7 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `QTY` | int | **Tree** | how many of this piece — optional |
 | input | `DIR` | bool | **List** | grain direction per part — optional |
 | input | `MAT` | str | **List** | material per part — optional |
+| input | `PNAME` | str | **List** | panel name per part, for the cut list — optional |
 | input | `BAND` | str | **List** | edge banding per part, `"0011"` — optional |
 | input | `PLN` | Plane | **List** | each part's own plane — needed wherever `BAND` bands an edge |
 | output | `MPR` | — | | one whole program per setup, line endings embedded |
@@ -144,7 +145,7 @@ flat list in part order. With no `ID` the programs are simply numbered in the
 order they are written — `0`, `1`, `2` … — with no gaps, however many solids
 were folded together.
 
-`DIR`, `MAT`, `BAND` and `PLN` are different: they are plain lists as long as
+`DIR`, `MAT`, `PNAME`, `BAND` and `PLN` are different: they are plain lists as long as
 the list of parts, read straight through in the order the parts arrive on
 `B`. See [Material, grain and the cut list](#material-grain-and-the-cut-list)
 and [Edge banding](#edge-banding).
@@ -181,10 +182,15 @@ The piece always lies with its long side on X, but **four ways round**:
 
 | Placement | What it does to the piece | Edges |
 | --- | --- | --- |
-| `F` face up | as modelled | as modelled |
-| `F` face up, turned end for end | 180° in its own plane | top ↔ lower, left ↔ right |
-| `B` turned over | 180° about the long (X) axis | top ↔ lower |
-| `B` turned over about its short axis | 180° about the short (Y) axis | left ↔ right |
+| `B` face up | as modelled | as modelled |
+| `B` face up, turned end for end | 180° in its own plane | top ↔ lower, left ↔ right |
+| `F` turned over | 180° about the long (X) axis | top ↔ lower |
+| `F` turned over about its short axis | 180° about the short (Y) axis | left ↔ right |
+
+**The letter is the side the operator sees**, not the side the tools work.
+The head works the face that is up, so the operator faces the other one:
+with the modelled face up, that is the back — `B`. Turned over, the operator
+sees the front — `F`.
 
 Turning over brings the underside up; turning end for end keeps the face up.
 Because the top and lower edges carry different bits, both moves change what
@@ -209,8 +215,8 @@ the piece is turned between the two.
 So a piece with Ø8 *and* Ø4.5 holes in its top edge comes out as two programs:
 
 ```
-ND0142_800x400-F_4.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
-ND0142_800x400-B_4.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
+ND0142_800x400-B_4.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
+ND0142_800x400-F_4.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
 ```
 
 The first drills the Ø8 with the piece face up. The second is written for the
@@ -263,12 +269,12 @@ reach in one clamping — but the radius takes the right edge and the
 upper-right corner. So it comes out as two programs instead:
 
 ```
-5_323x78-B_2.mpr   turned over about its short axis   7 x BohrHoriz
-5_323x78-F_2.mpr   face up, turned end for end        2 x BohrVert
+5_323x78-F_2.mpr   turned over about its short axis   7 x BohrHoriz
+5_323x78-B_2.mpr   face up, turned end for end        2 x BohrVert
 ```
 
-`B` drills the edges with the radius at the upper-left; then the piece is
-turned over about its long axis and `F` drills the two Ø15 with the radius at
+`F` drills the edges with the radius at the upper-left; then the piece is
+turned over about its long axis and `B` drills the two Ø15 with the radius at
 the lower-left. **Of two setups, the better-held one goes first** — it is
 where the piece is worked hardest. `INFO` says when a second setup was taken
 for the grip alone, and warns when one of the first `GRIP_CHECK` zones is
@@ -297,19 +303,23 @@ actual gripper.
 
 ### Center punch
 
-A vertical dead-end bore shallower than `PUNCH_DEPTH` (1 mm) is a **mark**,
-not a hole: the 7 mm bit only dimples the face. It is written as an ordinary
-`<102 \BohrVert\` with `BM="CP"` — woodWOP's *Center punch* mode, which lets
-the cycle allow for the pointed tip. `TI` stays the depth as modelled.
+**Off.** The woodWOP on the machine predates *Center punch*, so
+`PUNCH_DEPTH` is `0` and a mark — a dead-end vertical bore well under 1 mm
+deep, where the 7 mm bit only dimples the face — is drilled like any other
+dead-end bore, `BM="LS"` (`BM_VERT`, *slow-fast to depth*), to the depth as
+modelled:
 
 ```
-<102 \BohrVert\   XA="68"  YA="197"  BM="CP"  TI="0.5"  DU="7"
+<102 \BohrVert\   XA="68"  YA="197"  TI="0.5"  DU="7"  BM="LS"
 ```
 
-This is exactly how woodWOP 9.0.152 saves it —
+The punch is kept for when the machine runs woodWOP 9. Set `PUNCH_DEPTH`
+back to `1.0` and a dead-end bore shallower than that is written with
+`BM="CP"` (`BM_PUNCH`), woodWOP's *Center punch* mode, which lets the cycle
+allow for the pointed tip; `TI` stays the depth as modelled. That is exactly
+how woodWOP 9.0.152 saves it —
 `Examples/WoodWop_export/0_340x252-B_1_Center-punch-mode.mpr`, where the marks
-differ from the plain `LS` bores in `BM` alone. Dead-end bores 1 mm deep or
-more keep `BM_VERT`. `PUNCH_DEPTH = 0` turns punching off.
+differ from the plain `LS` bores in `BM` alone.
 
 ### Through bores
 
@@ -468,17 +478,31 @@ Both feed the identical-panel test above, and both feed `TABLE`, the cut list:
 a header line and then one line per piece.
 
 ```
-Material;ID;Lungime;Latime;Cantitate
-base;0;480;232;1
+Material;ID;Lungime;Latime;Cantitate;Denumire
+base;0;480;232;1;Bottom
+base;1;560;300;1;Side left
+base;1;560;300;1;Side right
 ```
 
 `ID` is which program the line is for, counting from zero, and is the same
 number the file name carries. Solids folded into one program share that one
 number, and the numbering runs on without gaps. `Lungime` is the dimension
-along the grain —
-the long side of the panel unless `DIR` said otherwise — and `Cantitate` is
-the same total the file name carries. A part the converter throws out still
-gets a line, sized from its bounding box, so nothing drops out of the list.
+along the grain — the long side of the panel unless `DIR` said otherwise. A
+part the converter throws out still gets a line, sized from its bounding box,
+so nothing drops out of the list.
+
+`Denumire` is the panel's name, from `PNAME` — a plain list, one name per
+part, like `DIR` and `MAT`, carried through as given. A `;` or a line break
+in a name becomes a space, so it cannot split the line. The name is **not**
+part of the identical-panel test: a left and a right side of the same shape
+still share one program. So a program whose copies carry different names gets
+**a line per name**, each with the quantity of the solids that bore that
+name, all under the program's one `ID` — `Side left` and `Side right` above.
+`Cantitate` is then that name's share, and the lines of one `ID` add up to
+the total the file name carries. Solids with the same name, or none, share a
+line; with one name, or `PNAME` unwired, there is one line per program and
+`Cantitate` is the whole total. `INFO` lists the names of a program, and each
+folded-in copy's line names it too.
 
 `DIR` changes the cut list only, never the program: the machine has no notion
 of grain, so the sizes swap on the sheet while the holes stay exactly where
@@ -573,8 +597,8 @@ drilled from. `INFO` names them per setup:
 
 ```
 0   600 x 300 x 18 mm   x1   2 files
-  F  face up                          1 x BohrVert, banding marked on the right edge
-  B  turned over                      1 x BohrVert, banding marked on the right edge
+  B  face up                          1 x BohrVert, banding marked on the right edge
+  F  turned over                      1 x BohrVert, banding marked on the right edge
   note: banding 0001: the right side of the plane
 ```
 
@@ -598,10 +622,6 @@ empty one or `0000` simply has no marks, and needs no plane. A `BAND` or `PLN`
 list of the wrong length is read as far as it goes and reported, as `DIR`
 and `MAT` are.
 
-On a panel under about 180 mm across, an 80 mm mark reaches past the middle,
-where it may look as much like the opposite edge's mark as its own. `INFO`
-says so — check that piece in woodWOP.
-
 Because the origin is not read, a plane that belongs to another panel — or to
 this one where it stood in the assembly — is **not** caught if it happens to
 face the same way. Keep `BAND`, `PLN` and `B` in the same order.
@@ -609,13 +629,14 @@ face the same way. Keep `BAND`, `PLN` and `B` in the same order.
 ### File names
 
 ```
-<ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-F_4.mpr
+<ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-B_4.mpr
 ```
 
-`F` = face up. `B` = turned over. Whether a setup is also turned end for end
-is not in the name — `INFO` says it, and the program itself shows where
-everything is. Of two programs, the one written first is the one to run
-first; it may be `B`. The quantity is the sum of
+The letter is the side facing the operator: `B` = face up as modelled, so
+the operator sees the back; `F` = turned over. Whether a setup is also turned
+end for end is not in the name — `INFO` says it, and the program itself shows
+where everything is. Of two programs, the one written first is the one to run
+first; it may be `F`. The quantity is the sum of
 `QTY` over the identical solids folded into that program — 1 per solid if
 nothing came in on `QTY` — and is the same on every program of one piece.
 Two pieces asking for the same name is caught and reported rather than
@@ -831,9 +852,9 @@ not read or save local files.
 * Feed rates, spindle speeds and tool numbers are left at `STANDARD` /
   woodWOP defaults. `BohrVert` is written with `BM="LS"`, `S_="2"` — change
   with `--bm-vert` or edit in woodWOP. The Grasshopper component writes
-  marks under 1 mm deep as `BM="CP"` (see [Center punch](#center-punch)) and
-  through bores as `BM="LSL"` (see [Through bores](#through-bores));
-  `dxf2mpr.py` does neither.
+  marks as `BM="LS"` too, since the machine's woodWOP has no `BM="CP"` (see
+  [Center punch](#center-punch)), and through bores as `BM="LSL"` (see
+  [Through bores](#through-bores)); `dxf2mpr.py` writes `LS` throughout.
 * Arc direction in contours follows the MPR parser constants documented in
   section 4 of the format spec (`DS`: 0 = counter clockwise short, 1 =
   clockwise short, 2/3 = the same over 180°). Verify the first contour part.

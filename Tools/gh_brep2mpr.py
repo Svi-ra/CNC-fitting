@@ -12,6 +12,7 @@ Component setup
     input   QTY    int      access = Tree   how many of this piece, optional
     input   DIR    bool     access = List   grain direction per part, optional
     input   MAT    str      access = List   material per part, optional
+    input   PNAME  str      access = List   panel name per part, optional
     input   BAND   str      access = List   edge banding per part, optional
     input   PLN    Plane    access = List   each part's own plane, needed
                                             wherever BAND bands an edge
@@ -39,8 +40,9 @@ the Rhino document is never consulted, so its units are not checked either.
     - the long side of the part is turned to X (LONG_X)
     - cylindrical faces become drillings, classified by where they break out:
         along Z, open at the top      -> <102 \BohrVert\
-          (through: BM="LSL" Slow-fast-slow through, no TI;
-           under PUNCH_DEPTH deep and dead-end: a mark, BM="CP" Center punch)
+          (dead-end: BM="LS" Slow-fast to depth, marks included;
+           through: BM="LSL" Slow-fast-slow through, no TI;
+           BM="CP" Center punch for marks is off -- see PUNCH_DEPTH)
         along X or Y, open at an edge -> <103 \BohrHoriz\
         any other angle               -> <104 \BohrUniv\
     - a flat rectangular cavity floor between the two faces becomes a sawn
@@ -66,9 +68,11 @@ out as more than one program (see MACHINE below):
       needs the piece turned over just as an underside bore does.
 
 The piece always lies with its long side on X, but four ways round: face up
-(F) or **turned over about the X axis** (B), and either of them **turned end
-for end** -- 180 deg in its own plane. Turning over brings the underside up
-and swaps the top and lower edges; turning end for end swaps them too, and
+(B) or **turned over about the X axis** (F), and either of them **turned end
+for end** -- 180 deg in its own plane. The letter is the side the operator
+sees: the tools work the face that is up, so the operator faces the other
+one -- with the modelled face up, that is the back. Turning over brings the
+underside up and swaps the top and lower edges; turning end for end swaps them too, and
 left with right, but keeps the face up. Every bore and groove is tried all
 four ways, and at most two setups are used: one face up, one turned over.
 
@@ -184,22 +188,34 @@ The cut list
 ------------
 TABLE is the cut list: a header line and then one line per piece.
 
-    Material;ID;Lungime;Latime;Cantitate
-    base;0;480;232;1
+    Material;ID;Lungime;Latime;Cantitate;Denumire
+    base;0;480;232;1;Bottom
+    base;1;560;300;1;Side left
+    base;1;560;300;1;Side right
 
 ID is which program the line is for, counting from zero, and matches the one
 on the file name. Identical solids folded into one program share that one
 number, and the numbering has no gaps. Lungime is the dimension along the
-grain -- the long side of the panel unless DIR said otherwise -- and
-Cantitate is the same total the file name carries.
+grain -- the long side of the panel unless DIR said otherwise.
+
+Denumire is the panel's name, from PNAME: a plain list, one item per part,
+like DIR and MAT, carried through as given. It is not part of the
+identical-panel test -- a left and a right side of the same shape still
+share one program -- so a program whose copies carry different names gets
+a line per name, each with the quantity of the solids that bore it, all
+under the program's one ID. Cantitate is then that name's share, and the
+lines of one ID add up to the total the file name carries; with one name,
+or none, there is one line and Cantitate is that total.
 
 File names
 ----------
     <ID>_<length>x<width>-<F|B>_<quantity>.mpr
 
-`F` = face up, as modelled. `B` = turned over. The quantity is the sum of QTY
-over the identical solids folded into this program (1 per solid if nothing
-came in on QTY), and is the same on every program of one piece. With no ID
+The letter is the side facing the operator, not the tools: `B` = face up, as
+modelled, so the operator sees the back. `F` = turned over. The quantity is
+the sum of QTY over the identical solids folded into this program (1 per
+solid if nothing came in on QTY), and is the same on every program of one
+piece. With no ID
 input the programs are simply numbered 0, 1, 2 ... in order.
 """
 
@@ -216,11 +232,13 @@ from Grasshopper.Kernel.Data import GH_Path
 
 SNAP = 0.0          # round drill diameters to this step (0 = leave exact)
 MAX_DIA = 60.0      # larger round openings are not treated as drillings
-BM_VERT = "LS"      # drill mode for dead-end vertical bores: LS SS
+BM_VERT = "LS"      # woodWOP's "Slow-fast to depth", for dead-end bores
 BM_THRU = "LSL"     # woodWOP's "Slow-fast-slow through", for through bores
-BM_PUNCH = "CP"     # woodWOP's "Center punch" mode, for marking holes
-PUNCH_DEPTH = 1.0   # dead-end vertical bores shallower than this, mm, are
-                    # punched with BM_PUNCH rather than drilled (0 = never)
+BM_PUNCH = "CP"     # woodWOP 9's "Center punch" mode, for marking holes
+PUNCH_DEPTH = 0.0   # dead-end vertical bores shallower than this, mm, are
+                    # punched with BM_PUNCH rather than drilled (0 = never).
+                    # Off: the woodWOP on the machine predates "CP", so a mark
+                    # is drilled BM_VERT to its depth. 1.0 once it has it.
 THICKNESS = None    # force a thickness in mm, or None to measure it
 LONG_X = True       # turn the part so its long side runs along X
 CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
@@ -234,7 +252,8 @@ MERGE_IDENTICAL = True  # solids of the same shape share one program
 DUP_TOL = 0.01          # two solids count as the same shape within this, mm
 
 TABLE_SEP = ";"
-TABLE_HEADER = ("Material", "ID", "Lungime", "Latime", "Cantitate")
+TABLE_HEADER = ("Material", "ID", "Lungime", "Latime", "Cantitate",
+                "Denumire")
 
 # ---------------------------------------------------------------------------
 # the machine
@@ -881,19 +900,20 @@ def place(corners, holes, planars, notes):
 
 
 # ---------------------------------------------------------------------------
-# setups: F = face up as modelled, B = turned over about the X axis,
-# either of them possibly turned end for end as well
+# setups: B = face up as modelled, F = turned over about the X axis,
+# either of them possibly turned end for end as well. The letter names the
+# side facing the operator, which is the one facing away from the tools.
 # ---------------------------------------------------------------------------
 
 # (mark, turned end for end). The mark alone names the file; the turn is a
 # matter of which way round the piece goes on the machine, and INFO says it.
-ORIENTS = (("F", False), ("F", True), ("B", False), ("B", True))
+ORIENTS = (("B", False), ("B", True), ("F", False), ("F", True))
 
 ORIENT_NAME = {
-    ("F", False): "face up",
-    ("F", True): "face up, turned end for end",
-    ("B", False): "turned over",
-    ("B", True): "turned over about its short axis",
+    ("B", False): "face up",
+    ("B", True): "face up, turned end for end",
+    ("F", False): "turned over",
+    ("F", True): "turned over about its short axis",
 }
 
 # What may be tried, best first when nothing else tells them apart: one
@@ -906,7 +926,7 @@ PLANS = ([(o,) for o in ORIENTS]
 def setup_maps(mark, lx, ly, lz, turned=False):
     """(point map, direction map) taking base coordinates into a setup.
 
-    B is a 180 deg turn about the X axis followed by the shift that puts the
+    F is a 180 deg turn about the X axis followed by the shift that puts the
     part back on the zero point. The placed part spans 0..lx, 0..ly, 0..lz,
     so that shift is exactly (0, ly, lz). X is untouched, so a bore in the
     left edge stays in the left edge; the top and lower edges swap, and the
@@ -914,14 +934,14 @@ def setup_maps(mark, lx, ly, lz, turned=False):
 
     Turned end for end adds a 180 deg turn in the panel's own plane: left and
     right swap, and so do the top and lower edges, while the face that is up
-    stays up. On top of B that makes a turn about the Y axis.
+    stays up. On top of F that makes a turn about the Y axis.
 
     Every one of these maps is its own inverse.
     """
-    if mark == "B" and turned:
+    if mark == "F" and turned:
         return (lambda p: (lx - p[0], p[1], lz - p[2]),
                 lambda v: (-v[0], v[1], -v[2]))
-    if mark == "B":
+    if mark == "F":
         return (lambda p: (p[0], ly - p[1], lz - p[2]),
                 lambda v: (v[0], -v[1], -v[2]))
     if turned:
@@ -1264,6 +1284,7 @@ def macro(feat, dia, lz):
         depth = lz - feat["zlo"]
         # A mark too shallow to be a hole is punched: woodWOP writes it as
         # the same bore with BM="CP" and lets the cycle allow for the tip.
+        # PUNCH_DEPTH = 0 turns this off and the mark is drilled BM_VERT.
         punch = depth < PUNCH_DEPTH - GEO_TOL
         return (102, "BohrVert", [
             ("XA", fnum(feat["x"])), ("YA", fnum(feat["y"])),
@@ -1522,8 +1543,8 @@ def band_edges(bands, quarter, mark, turned):
 
 # How one setup of a pair lies relative to the other, by which of X and Y
 # change direction between them.
-_SIGNS = {("F", False): (1, 1), ("F", True): (-1, -1),
-          ("B", False): (1, -1), ("B", True): (-1, 1)}
+_SIGNS = {("B", False): (1, 1), ("B", True): (-1, -1),
+          ("F", False): (1, -1), ("F", True): (-1, 1)}
 TURN_NAME = {(1, -1): "turned over about its long axis",
              (-1, 1): "turned over about its short axis",
              (-1, -1): "turned end for end"}
@@ -1694,8 +1715,8 @@ def grip_notes(needed, able, grip, notes):
                        "placed " + ORIENT_NAME[weak] + ",",
                        name, _where(u, v), int(round(was * 100))))
                 break
-    elif len(needed) == 1 and needed[0][0] == "B":
-        if any(p[0][0] == "F" for p in able if len(p) == 1):
+    elif len(needed) == 1 and needed[0][0] == "F":
+        if any(p[0][0] == "B" for p in able if len(p) == 1):
             notes.append("one setup, turned over - face up would reach the "
                          "same bores but hold the piece worse")
         else:
@@ -1960,15 +1981,33 @@ def panel_size(brep):
     return lx, ly
 
 
-def table_row(material, number, lx, ly, along_grain, qty):
+def table_row(material, number, lx, ly, along_grain, qty, name=""):
     """One cut list line.
 
     Lungime is the dimension along the grain, so the two sizes swap for a
-    piece laid across it -- the same swap as turning the panel 90 deg.
+    piece laid across it -- the same swap as turning the panel 90 deg. The
+    name is free text, so a separator or a line break in it is made a space
+    rather than split the line.
     """
     lungime, latime = (lx, ly) if along_grain else (ly, lx)
+    name = " ".join(name.replace(TABLE_SEP, " ").split())
     return TABLE_SEP.join([material, str(number), fnum(lungime),
-                           fnum(latime), str(qty)])
+                           fnum(latime), str(qty), name])
+
+
+def name_rows(members):
+    """[(name, qty), ...] for the solids folded into one program.
+
+    The copies of one program may be different panels that happen to share a
+    shape -- a left and a right side, say -- so each name keeps a cut list
+    line of its own, with the quantity of the solids that carried it, in the
+    order the names first came in. Solids with the same name, or none, are
+    added up on one line; the lines together come to the program's total.
+    """
+    rows = {}
+    for entry in members:
+        rows[entry[9]] = rows.get(entry[9], 0) + entry[3]
+    return list(rows.items())
 
 
 def file_name(ident, part, mark, qty):
@@ -1987,11 +2026,18 @@ def copy_label(entry):
     return entry[2] if entry[6] else "input %s" % entry[2]
 
 
-def describe(ident, qty, setups, copies=(), material="", along_grain=True):
+def describe(ident, qty, setups, copies=(), material="", along_grain=True,
+             names=()):
     _mark, first = setups[0]
     lines = ["%s   %s x %s x %s mm   x%s   %d file%s"
              % (ident, fnum(first.lx), fnum(first.ly), fnum(first.lz), qty,
                 len(setups), "" if len(setups) == 1 else "s")]
+    if len(names) == 1 and names[0][0]:
+        lines.append("  %s" % names[0][0])
+    elif len(names) > 1:
+        lines.append("  %d names, a cut list line each: %s"
+                     % (len(names), ", ".join("%s x%s" % (nm or "no name", q)
+                                              for nm, q in names)))
     if material or not along_grain:
         lines.append("  %s%s"
                      % (material or "no material given",
@@ -2138,6 +2184,10 @@ try:
 except NameError:
     MAT = None
 try:
+    PNAME
+except NameError:
+    PNAME = None
+try:
     BAND
 except NameError:
     BAND = None
@@ -2156,6 +2206,7 @@ ids = SideInput(ID)
 qtys = SideInput(QTY)
 directions = column(DIR)
 materials = column(MAT)
+panel_names = column(PNAME)
 patterns = column(BAND)
 planes = column(PLN)
 taken = {}
@@ -2164,7 +2215,7 @@ n = 0
 # Read the whole input first: identical solids have to be found before any of
 # them is converted, so the shape is only put through the planner once.
 # (path, brep, ident, qty, material, along_grain, explicit, bands,
-#  band_notes), in input order
+#  band_notes, panel name), in input order
 entries = []
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
@@ -2185,6 +2236,7 @@ for path, items in branches_of(B):
             qty = 1
 
         material = str(at(materials, n, "")).strip()
+        panel_name = str(at(panel_names, n, "")).strip()
         along_grain = as_bool(at(directions, n, True), True)
 
         # Banding: the sides of the part's plane, turned into the ways they
@@ -2208,15 +2260,16 @@ for path, items in branches_of(B):
             band_notes = []
 
         entries.append((path, brep, ident, qty, material, along_grain,
-                        explicit, bands, band_notes))
+                        explicit, bands, band_notes, panel_name))
         n += 1
 
-# DIR, MAT, BAND and PLN run part for part with B. A list of another length
-# still works -- the parts past its end are along the grain, with no material
-# and no banding -- but it is almost always a wiring mistake, so it is said
-# out loud.
+# DIR, MAT, PNAME, BAND and PLN run part for part with B. A list of another
+# length still works -- the parts past its end are along the grain, with no
+# material, no name and no banding -- but it is almost always a wiring
+# mistake, so it is said out loud.
 for label, values in (("DIR", directions), ("MAT", materials),
-                      ("BAND", patterns), ("PLN", planes)):
+                      ("PNAME", panel_names), ("BAND", patterns),
+                      ("PLN", planes)):
     if values and len(values) != n:
         INFO.Add("WARNING: %d part%s but %d value%s on %s - %s takes one "
                  "value per part, in the same order"
@@ -2292,6 +2345,7 @@ for g, members in enumerate(groups):
     material, along_grain, explicit = entry[4], entry[5], entry[6]
     copies = [entries[i] for i in members[1:]]
     qty = sum(entries[i][3] for i in members)
+    rows = name_rows([entries[i] for i in members])
     number = g                      # which program this is, counting from zero
     if not explicit:
         ident = str(number)
@@ -2311,11 +2365,12 @@ for g, members in enumerate(groups):
                 taken[name] = 1
             MPR.Add(render_mpr(part), path)
             NAME.Add(name, path)
-        INFO.Add(describe(ident, qty, setups, copies, material, along_grain),
-                 path)
+        INFO.Add(describe(ident, qty, setups, copies, material, along_grain,
+                          rows), path)
         first = setups[0][1]
-        TABLE.Add(table_row(material, number, first.lx, first.ly,
-                            along_grain, qty), GH_Path(0))
+        for panel_name, row_qty in rows:
+            TABLE.Add(table_row(material, number, first.lx, first.ly,
+                                along_grain, row_qty, panel_name), GH_Path(0))
     except Exception as exc:
         MPR.Add(None, path)
         NAME.Add(None, path)
@@ -2324,8 +2379,9 @@ for g, members in enumerate(groups):
         # list, sized from its bounding box.
         try:
             lx, ly = panel_size(brep)
-            TABLE.Add(table_row(material, number, lx, ly, along_grain, qty),
-                      GH_Path(0))
+            for panel_name, row_qty in rows:
+                TABLE.Add(table_row(material, number, lx, ly, along_grain,
+                                    row_qty, panel_name), GH_Path(0))
         except Exception:
             pass
     if g in apart:
@@ -2335,5 +2391,7 @@ for g, members in enumerate(groups):
                  path)
     for copy in copies:
         cpath, cqty = copy[0], copy[3]
-        INFO.Add("%s   identical to %s - no program of its own, its x%s is in "
-                 "that one" % (copy_label(copy), ident, cqty), cpath)
+        INFO.Add("%s%s   identical to %s - no program of its own, its x%s is "
+                 "in that one" % (copy_label(copy),
+                                  " (%s)" % copy[9] if copy[9] else "",
+                                  ident, cqty), cpath)

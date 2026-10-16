@@ -9,6 +9,46 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.13.0] — 2026-10-16
+
+`Tools/gh_brep2mpr.py` names setups from the operator's side, drills marks
+the way the machine's woodWOP can, and carries each panel's name into the
+cut list.
+
+### Changed
+
+- **The `-F` / `-B` in a file name are swapped: they now name the side the
+  operator sees.** The head works the face that is up, so the operator faces
+  the other one: a piece face up as modelled is now `-B`, one turned over is
+  `-F`. Only the letters move — placement, the setups chosen and their order
+  are unchanged. `INFO` uses the same letters. **A part converted before
+  this comes out under the other letter**; programs already written keep
+  their old names.
+- **Center punch is off.** The woodWOP on the machine predates
+  `BM="CP"`, so `PUNCH_DEPTH` is now `0` and a mark under 1 mm deep is
+  drilled like any dead-end bore, `BM="LS"` — *slow-fast to depth* — to its
+  modelled depth. `BM_PUNCH` stays; set `PUNCH_DEPTH = 1.0` again once the
+  machine runs woodWOP 9.
+- `TABLE` has a sixth column, `Denumire`:
+  `Material;ID;Lungime;Latime;Cantitate;Denumire`. The first five are where
+  they were.
+
+### Added
+
+- **`PNAME`, the panel name per part** — a plain list like `DIR` and `MAT`,
+  optional, written to `Denumire` as given (a `;` or line break becomes a
+  space). The name is not part of the identical-panel test, so copies of one
+  shape still share a program; where they carry different names, the program
+  gets a cut list line per name, each with that name's quantity and the same
+  `ID`, and the lines of one `ID` add up to the total in the file name.
+  `INFO` lists a program's names and names each folded-in copy. A `PNAME`
+  list of the wrong length is reported as `DIR` and `MAT` are.
+
+### Removed
+
+- From `Tools/README.md`, the note about 80 mm banding marks on small panels,
+  left over from before 0.12.2.
+
 ## [0.12.2] — 2026-10-15
 
 `Tools/gh_brep2mpr.py` draws the banding marks as woodWOP draws them.
