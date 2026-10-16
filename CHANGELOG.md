@@ -9,6 +9,56 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.16.0] — 2026-10-16
+
+The cut list reaches Excel without the macro: `Tools/gh_json2xlsx.py` turns
+the JSON into the parts of an `.xlsx`, for ShapeDiver's archive download to
+zip into a workbook that opens ready to print. Categories that share a
+material now share a block.
+
+### Added
+
+- **`gh_json2xlsx.py`**, a Grasshopper component wired after
+  `gh_cutlist2json.py`. `JSON` in; out `PATH` and `TEXT`, the six files an
+  `.xlsx` is made of (`[Content_Types].xml`, `_rels/.rels`,
+  `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml`,
+  `xl/worksheets/sheet1.xml`) as paths and texts side by side, and `NAME`,
+  the archive's name without extension. Zipped at the root of the archive and
+  named `.xlsx`, they open in Excel as the sheet `CutListImport.bas` builds:
+  values, text kept as text, widths and taller rows, fills, fonts,
+  alignment, thin rules and medium outlines, merges, landscape A4 one page
+  wide. A JSON that is not `gh_cutlist2json`'s, or a newer version, gives no
+  parts and an error.
+- `Examples/CutList/sample_cutlist.xml`, a short hand-written Excel 2003 XML
+  Spreadsheet of the cut list layout.
+
+### Changed
+
+- **Categories that print the same material share one block** in the cut
+  list sheet, where the first of them stands on `CAT`, lines in program
+  order; `INFO` names the categories it joined. A category missing from
+  `CAT`, or one with an empty material name, keeps a block of its own.
+- **JSON:** each entry of `sections` carries `categories`, a list, in place
+  of `category`. The `sheet` half, the one `CutListImport.bas` reads, is
+  unchanged, and so is `version`. `Examples/CutList/sample_cutlist.json`
+  updated to match.
+
+### Tested
+
+- Outside Grasshopper with its types stubbed: merging for shared, distinct
+  and empty material names and for a stray category named like a material;
+  the sample's sheet regenerated identical.
+- The `.xlsx` for a 15-line cut list opened in Excel and compared cell by
+  cell with the workbook the macro built from the same data: 473 of 475
+  checks match — the two left are empty rows above a block, 15 pt where
+  Excel makes them 15.75 after the macro. Names with `& < > "`, Romanian
+  and Cyrillic letters, `1/2` and a text ID `106F` come through as text,
+  `582,5` as the number 582.5. Archives with the parts in a folder, without
+  `[Content_Types].xml`, or with one text repeated under all six paths are
+  refused by Excel — the last is what a joined `TEXT` list gives, and the
+  component's notes say so. Ran on ShapeDiver with the parts still on
+  `gh_cutlist2json.py`; not yet run there as its own component.
+
 ## [0.15.0] — 2026-10-16
 
 Banding materials: `Tools/gh_brep2mpr.py` names what each banded edge is

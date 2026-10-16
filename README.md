@@ -101,10 +101,15 @@ See [Tools/README.md](Tools/README.md#grasshopper-component).
 The cut list goes on to Excel through a second component,
 `Tools/gh_cutlist2json.py`: give it the exact material name for each
 category and the project name, and it returns one JSON that lays the list
-out the way the shop's Excel cut lists are — a block per material, the panel
-names as comments, `Nr.` the program's number, and each banded edge's
-material and thickness in the three cells the cutting software imports. `Tools/CutListImport.bas`, imported into Excel's VBA
-editor, turns that JSON into the formatted sheet. See
+out the way the shop's Excel cut lists are — a block per material (categories
+that share a material share a block), the panel names as comments, `Nr.` the
+program's number, and each banded edge's material and thickness in the three
+cells the cutting software imports. A third component,
+`Tools/gh_json2xlsx.py`, turns that JSON into the text files of an `.xlsx`:
+zipped by ShapeDiver's archive download, they open in Excel as the finished
+sheet, ready to print with no macro. On the desktop,
+`Tools/CutListImport.bas`, imported into Excel's VBA editor, builds the same
+sheet from a saved `.json`. See
 [Tools/README.md](Tools/README.md#excel-cut-list).
 
 ## Documentation

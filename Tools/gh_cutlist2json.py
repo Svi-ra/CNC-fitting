@@ -32,6 +32,10 @@ local path. Save JSON as a .json through whatever exports text downstream: a
 ShapeDiver export component online, a panel or a writer of your own on the
 desktop. Write it as UTF-8: material and panel names keep their diacritics.
 
+For a workbook that opens ready to print, with no macro, wire JSON on into
+gh_json2xlsx.py: it turns the sheet into the text files of an .xlsx for an
+archive download to zip.
+
 The layout
 ----------
 The sheet follows the shop's reference workbook ("1. Mobilier birou copii
@@ -76,12 +80,14 @@ category as gh_brep2mpr's MAT carried it ("base", "interior" ...) and item
 *i* of MATERIAL is the name to print for it ("PAL 8681 SM"). The name is used
 exactly as given -- nothing is trimmed inside it or changed in case.
 
-The blocks come in the order of CAT. A category the cut list uses but CAT
-does not name still gets its block, after the named ones, titled with the
-category itself, and INFO warns about it: that title is a stand-in, not a
-material name. A category named in CAT that no line uses gets no block, and
-INFO says so. Categories are matched exactly, case and all, apart from
-spaces at either end.
+The blocks come in the order of CAT. Categories that print the same
+material -- "base" and "drawers" both PAL 8681 SM -- share one block, where
+the first of them stands on CAT, and the section lists them all. A category
+the cut list uses but CAT does not name still gets its block, after the
+named ones, titled with the category itself, and INFO warns about it: that
+title is a stand-in, not a material name. A category named in CAT that no
+line uses gets no block, and INFO says so. Categories are matched exactly,
+case and all, apart from spaces at either end.
 
 Within a block the lines keep the cut list's order, which is the order of the
 program IDs. A program whose copies carry different names comes in as
@@ -98,7 +104,7 @@ The JSON
 --------
 One object with two halves. ``sections`` is the data, one entry per material:
 
-    {"category": "base", "material": "PAL 8681 SM", "first_row": 3, ...
+    {"categories": ["base"], "material": "PAL 8681 SM", "first_row": 3, ...
      "rows": [{"nr": 1, "id": "1", "length": 490, "width": 100, "qty": 4,
                "edges": {"L-1": {"name": "ABS 22/1",
                                  "designation": "ABS 22/1",
@@ -368,21 +374,41 @@ def read_materials(cats, names, info):
 
 
 def group(pieces, materials, info):
-    """The pieces in blocks by material: CAT's order, then the strays."""
-    blocks = {cat: [] for cat in materials}
-    for piece in pieces:
-        blocks.setdefault(piece["category"], []).append(piece)
+    """The pieces in blocks by material: CAT's order, then the strays.
+
+    Categories that print the same material share one block, placed where
+    the first of them is on CAT, its lines in the cut list's order. A stray
+    keeps a block of its own even when its stand-in title happens to read
+    like a material name, and so does a category with an empty name.
+    """
+    def key(cat):
+        name = materials.get(cat)
+        return ("material", name) if name else ("category", cat)
+
+    blocks = {}                         # key -> [categories, pieces]
     for cat in materials:
-        if not blocks[cat]:
+        blocks.setdefault(key(cat), [[], []])
+    used = set(piece["category"] for piece in pieces)
+    for piece in pieces:
+        block = blocks.setdefault(key(piece["category"]), [[], []])
+        if piece["category"] not in block[0]:
+            block[0].append(piece["category"])
+        block[1].append(piece)
+    for cat in materials:
+        if cat not in used:
             info.append("category '%s' (%s) has no line in the cut list - "
                         "no block for it" % (cat, materials[cat]))
-    for cat in blocks:
-        if blocks[cat] and cat not in materials:
-            info.append("WARNING: category '%s' is in the cut list but not "
-                        "on CAT - its block is titled with the category, "
-                        "not a material name" % (cat or "(none)"))
-    return [(cat, materials.get(cat, cat), rows)
-            for cat, rows in blocks.items() if rows]
+    for cat in sorted(used - set(materials), key=str):
+        info.append("WARNING: category '%s' is in the cut list but not "
+                    "on CAT - its block is titled with the category, "
+                    "not a material name" % (cat or "(none)"))
+    for (kind, name), (cats, rows) in blocks.items():
+        if kind == "material" and len(cats) > 1:
+            info.append("categories %s are all %s - one block for them"
+                        % (", ".join("'%s'" % c for c in cats), name))
+    return [(cats, materials.get(name, name) if kind == "category" else name,
+             rows)
+            for (kind, name), (cats, rows) in blocks.items() if rows]
 
 
 def row_number(ident):
@@ -445,7 +471,7 @@ def build(project, blocks):
     tall(1)
 
     top = 3
-    for cat, material, pieces in blocks:
+    for cats, material, pieces in blocks:
         head, first, last = top + 1, top + 2, top + 1 + len(pieces)
 
         put(top, [TITLE_PREFIX + material] + [None] * (N_COLS - 2)
@@ -487,7 +513,7 @@ def build(project, blocks):
                     {"range": ref(COMMENT_COL, first, COMMENT_COL, last),
                      "style": "comment"}]
 
-        sections.append({"category": cat, "material": material,
+        sections.append({"categories": cats, "material": material,
                          "title": TITLE_PREFIX + material,
                          "first_row": top, "last_row": last,
                          "pieces": sum(p["qty"] for p in pieces),
@@ -565,8 +591,8 @@ def lay_out(notes):
     for section in doc["sections"]:
         INFO.Add("%s   %s   rows %d-%d   %d line%s, %s piece%s"
                  % (section["title"],
-                    "(%s)" % section["category"] if section["category"]
-                    else "(no category)",
+                    "(%s)" % ", ".join(c or "no category"
+                                       for c in section["categories"]),
                     section["first_row"], section["last_row"],
                     len(section["rows"]),
                     "" if len(section["rows"]) == 1 else "s",

@@ -868,9 +868,15 @@ To see a label before there is a printer, paste `ZPL` into a ZPL viewer
 
 The cut list `gh_brep2mpr.py` returns on `TABLE` goes to the shop as an
 Excel sheet laid out like its existing ones (the reference is *1. Mobilier
-birou copii str. Victoriei 8.xlsx*). Two pieces do it:
-`gh_cutlist2json.py` in Grasshopper turns the cut list into one JSON, and
-`CutListImport.bas` in Excel turns the JSON into the formatted sheet.
+birou copii str. Victoriei 8.xlsx*). `gh_cutlist2json.py` in Grasshopper
+turns the cut list into one JSON, and from there two ways lead to the same
+sheet:
+
+* **`gh_json2xlsx.py`**, a second component, turns the JSON into the text
+  files of an `.xlsx`; an archive download zips them into a workbook that
+  opens ready to print, no macro — the way for ShapeDiver;
+* **`CutListImport.bas`** in Excel reads a saved `.json` and builds the
+  formatted sheet there.
 
 ### The component
 
@@ -902,7 +908,11 @@ row 5…   1   | 490         | 100        | 4     | ABS 22/1 | ABS 22/1 | 1 | �
 ```
 
 * One block per material, in `CAT`'s order, two empty rows apart; the lines
-  keep the cut list's order, which is the program `ID`s'.
+  keep the cut list's order, which is the program `ID`s'. **Categories that
+  print the same material share one block** — `base` and `sertar` both
+  `PAL_U702_ST9` give one `Material: PAL_U702_ST9`, placed where the first of
+  them is on `CAT`, its lines still in program order — and `INFO` names the
+  categories it put together.
 * **`Nr.` is the program `ID`** — the number the `.mpr` file name starts with,
   so `7` is `7_480x232-B_1.mpr`. It does not count rows: the lines of one
   program share its number, and a block starts at its first program's
@@ -915,7 +925,8 @@ row 5…   1   | 490         | 100        | 4     | ABS 22/1 | ABS 22/1 | 1 | �
 * The material name is printed exactly as it came in on `MATERIAL`. A
   category the cut list uses but `CAT` does not name still gets its block,
   titled with the category itself, and `INFO` warns — that title is a stand-in,
-  not a material name. A category on `CAT` that no line uses gets no block.
+  not a material name, so it keeps a block of its own even when it reads like
+  one. A category on `CAT` that no line uses gets no block.
 * **The edges** come from the cut list's `L-1` … `W-2` — the banding
   materials. Their three cells are the ones the cutting software's Excel
   import reads for each facing (*Облицовка*):
@@ -938,13 +949,62 @@ order. A line with too few fields, or a size or quantity that is not a
 number, is left out and named in `INFO`.
 
 The JSON has two halves. `sections` is the data, a block per material with
-its rows — Excel's *Data › Get Data › From File › From JSON* reads it as it
-is. `sheet` is the same rows already placed on the grid: the cells of each
+its rows and the list of `categories` that went into it — Excel's *Data ›
+Get Data › From File › From JSON* reads it as it is. `sheet` is the same rows already placed on the grid: the cells of each
 row from column A, the column widths and taller rows, named styles (font,
 fill, alignment, borders, number format), which style goes on which range,
 the ranges boxed with a medium line, the merges and the page — landscape A4,
 one page wide, the reference's margins. Like the others, the component
 writes no file: save `JSON` as a `.json`, UTF-8, downstream.
+
+### The .xlsx
+
+`gh_json2xlsx.py` is a third **Rhino 8 Script component set to Python 3**,
+wired after `gh_cutlist2json.py`:
+
+| | Name | Type | Access | |
+| --- | --- | --- | --- | --- |
+| input | `JSON` | str | Item | `JSON` off `gh_cutlist2json` |
+| output | `PATH` | — | | the six parts' paths in the archive |
+| output | `TEXT` | — | | their texts, in the same order |
+| output | `NAME` | — | | the archive's name, **without** the extension — the project name, less what Windows forbids in a file name |
+| output | `INFO` | — | | the report |
+
+An `.xlsx` is a zip of XML files, and these six are all it needs:
+
+```
+[Content_Types].xml          what each part is
+_rels/.rels                  where the workbook is
+xl/workbook.xml              the one sheet, by name
+xl/_rels/workbook.xml.rels   where the sheet and the styles are
+xl/styles.xml                fonts, fills, borders, alignment
+xl/worksheets/sheet1.xml     the cells, widths, merges and the page
+```
+
+Feed `PATH` and `TEXT` to the archive download — ShapeDiver's — as **two
+lists of six, item for item**, and name the archive `NAME` + `.xlsx`. The
+files go at the root of the archive under exactly these paths, square
+brackets included, and the extension must be `.xlsx`: Windows opens a
+`.zip` in Explorer, not Excel.
+
+**`TEXT` must arrive as six items.** If anything on the way joins the list
+into one text — a Panel, a Text Join, an input that takes a single item —
+Grasshopper repeats that one text under all six paths, every part holds all
+six documents, and Excel says the file's *format or extension is not valid*.
+A Panel or Param Viewer just before the archive should show 6 items on each
+wire. A folder round the parts, or no `[Content_Types].xml`, is refused the
+same way.
+
+What it writes is the JSON's `sheet`, laid out exactly as the importer below
+lays it out: text kept as text, numbers as numbers, the widths and taller
+rows, the formats in order, the medium outlines over them, the merges and
+the page — landscape A4, one page wide, the reference's margins, the print
+area no wider than the sheet. Opened next to the workbook the macro builds
+from the same JSON, every cell matches — value, fill, font, alignment, all
+four borders, merges — and so do the widths and the page; only an empty row
+above a block may come out 15 pt high where Excel, after the macro, makes it
+15.75. A JSON that is not `gh_cutlist2json`'s, or a newer version than the
+script knows, gives no parts and turns the component red.
 
 ### The importer
 
@@ -974,7 +1034,7 @@ Windows Excel: the file is read with `ADODB.Stream` and the JSON kept in
 
 ## ShapeDiver
 
-All three components are written to pass ShapeDiver's script review
+All four components are written to pass ShapeDiver's script review
 ([forbidden Grasshopper functionalities](https://help.shapediver.com/doc/forbidden-grasshopper-functionalities)):
 a definition there may not read from or write to the Rhino document, and may
 not read or save local files.
@@ -983,14 +1043,16 @@ not read or save local files.
   tolerance and units from `RhinoDoc.ActiveDoc`; it now has `TOL = 0.001` as
   a setting and assumes millimetres.
 * **Nothing touches the file system.** The components return text only —
-  `MPR` and `NAME`, `ZPL`, `JSON` — and the files are made downstream: on
+  `MPR` and `NAME`, `ZPL`, `JSON`, the `.xlsx` parts on `PATH` and `TEXT`
+  — and the files are made downstream: on
   ShapeDiver by its export components, on the desktop by whatever writer you
   put there.
 * No sliders or other inputs are changed, no solution is rescheduled, and the
-  only imports are `math`, `csv`, `json`, `Rhino` (for the Brep geometry) and
-  Grasshopper's data tree types. `gh_cutlist2json.py` reads its own inputs'
-  access settings off `ghenv.Component` and posts an error on itself — its
-  own component, nothing else in the definition.
+  only imports are `math`, `csv`, `json`, `re`, `Rhino` (for the Brep
+  geometry) and Grasshopper's data tree types. `gh_cutlist2json.py` reads its
+  own inputs' access settings off `ghenv.Component`, and it and
+  `gh_json2xlsx.py` post errors on themselves — their own component, nothing
+  else in the definition.
 
 ## Limits — read this before the first cut
 

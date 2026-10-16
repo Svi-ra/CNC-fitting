@@ -783,7 +783,7 @@
  },
  "sections": [
   {
-   "category": "base",
+   "categories": ["base"],
    "material": "PAL 8681 SM",
    "title": "Material: PAL 8681 SM",
    "first_row": 3,
@@ -907,7 +907,7 @@
    ]
   },
   {
-   "category": "interior",
+   "categories": ["interior"],
    "material": "PAL U702 ST9",
    "title": "Material: PAL U702 ST9",
    "first_row": 12,
@@ -949,7 +949,7 @@
    ]
   },
   {
-   "category": "fronts",
+   "categories": ["fronts"],
    "material": "fronts",
    "title": "Material: fronts",
    "first_row": 18,
