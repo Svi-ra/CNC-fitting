@@ -20,6 +20,9 @@ Component setup
                                             per part, optional
     input   BAND_MAP str    access = List   what each code stands for,
                                             "ABS 22/1=1", optional
+    input   FILE   str      access = Item   the input file's name or path,
+                                            OrderNumber-ModelPrefix-fitting,
+                                            optional: the programs' prefix
     output  MPR    -                        one whole program per setup,
                                             line endings already embedded
     output  NAME   -                        the file name for each program
@@ -130,8 +133,9 @@ gets an INFO line saying what kept them apart -- the material, the grain, or
 the first vertex or face that differs, with both values.
 
 Folding copies in does not eat any numbers: the programs are numbered by
-program, 1, 2, 3 ... in the order the pieces come in, so the numbering runs
-on without gaps however many solids were folded together. A piece with an ID
+program, 1, 2, 3 ... -- MM-1, MM-2, MM-3 ... with a model prefix, see File
+names -- in the order the pieces come in, so the numbering runs on without
+gaps however many solids were folded together. A piece with an ID
 of its own on ID keeps it -- the ID of the first solid of a group names the
 programs, and where the copies carried IDs of their own, INFO says so.
 
@@ -224,9 +228,10 @@ TABLE is the cut list: a header line and then one line per piece.
     base;1;560;300;1;Side left;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
     base;1;560;300;1;Side right;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
 
-ID is which program the line is for, counting from FIRST_ID (1), and
-matches the one on the file name. Identical solids folded into one program share that one
-number, and the numbering has no gaps. Lungime is the dimension along the
+ID is which program the line is for, counting from FIRST_ID (1) -- MM-1,
+MM-2 ... with a model prefix -- and matches the one on the file name.
+Identical solids folded into one program share that one number, and the
+numbering has no gaps. Lungime is the dimension along the
 grain -- the long side of the panel unless DIR said otherwise.
 
 L-1 and L-2 are the banding materials of the two edges along Lungime, W-1
@@ -255,6 +260,21 @@ solid if nothing came in on QTY), and is the same on every program of one
 piece. With no ID
 input the programs are simply numbered 1, 2, 3 ... in order -- from
 FIRST_ID, the way the cut list's Nr. counts.
+
+The model prefix
+----------------
+FILE names the model the parts come from, as OrderNumber-ModelPrefix-fitting
+-- 2471-MM-fitting.3dm, or the whole path to it. Its second part, MM, goes
+before every number the component gives out, joined by ID_SEP:
+
+    MM-1_480x232-B_1.mpr        MM-1 in the cut list's ID, and its Nr.
+
+A folder or an extension on FILE is dropped first; the order number is not
+used. A name without three parts -- Noptiera-1.dxf -- gives no prefix and a
+WARNING in INFO, and the programs are numbered as before; so does FILE left
+unwired, without the warning. An ID wired on ID is the piece's own and gets
+no prefix. The component never reads the file name off the Rhino document
+itself: ShapeDiver forbids that, so it has to come in on FILE.
 """
 
 import bisect
@@ -286,6 +306,7 @@ CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 FIRST_ID = 1        # the number of the first program, when ID is unwired
+ID_SEP = "-"        # between FILE's model prefix and the number: MM-1
 
 MERGE_IDENTICAL = True  # solids of the same shape share one program
 DUP_TOL = 0.01          # two solids count as the same shape within this, mm
@@ -2367,6 +2388,34 @@ def clean(text):
     return "".join(out).strip("_") or "part"
 
 
+def model_prefix(values):
+    """FILE -> (the model prefix or "", a line for INFO or None).
+
+    FILE is OrderNumber-ModelPrefix-fitting, maybe with a folder in front
+    and an extension behind: the second part is the prefix. No os.path --
+    the name may be a Windows path read anywhere, and the fewer imports the
+    easier ShapeDiver's review.
+    """
+    given = [str(v).strip() for v in values if v is not None
+             and str(v).strip()]
+    if not given:
+        return "", None
+    text = given[0]
+    base = text.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    stem, dot, ext = base.rpartition(".")
+    if dot and stem and ext.isalnum():
+        base = stem
+    parts = [p.strip() for p in base.split("-")]
+    if len(parts) < 3 or not parts[1]:
+        return "", ("WARNING: FILE %s is not OrderNumber-ModelPrefix-fitting "
+                    "- the programs are numbered without a model prefix"
+                    % text)
+    prefix = clean(parts[1])
+    return prefix, ("model prefix %s, from FILE %s - programs %s%s%d, %s%s%d "
+                    "..." % (prefix, base, prefix, ID_SEP, FIRST_ID, prefix,
+                             ID_SEP, FIRST_ID + 1))
+
+
 def default_id(path, j, count):
     """No ID wired: where the solid sat in the input, by branch path.
 
@@ -2414,6 +2463,10 @@ try:
     BAND_MAP
 except NameError:
     BAND_MAP = None
+try:
+    FILE
+except NameError:
+    FILE = None
 
 MPR = DataTree[object]()
 NAME = DataTree[object]()
@@ -2432,6 +2485,9 @@ band_codes = column(BANDTYPE)
 band_mapping, map_warnings = band_map(column(BAND_MAP))
 for warning in map_warnings:
     INFO.Add(warning, GH_Path(0))
+prefix, prefix_note = model_prefix(column(FILE))
+if prefix_note:
+    INFO.Add(prefix_note, GH_Path(0))
 if band_codes and not band_mapping:
     INFO.Add("WARNING: BANDTYPE is wired but BAND_MAP names no materials - "
              "no banding materials", GH_Path(0))
@@ -2595,7 +2651,8 @@ for i, entry in enumerate(entries):
 
 # Folding copies in must not eat the numbers of the pieces after them, so the
 # programs are numbered by group: one number per program, 1, 2, 3 ... with no
-# gaps. An ID wired on ID is the piece's own and is left alone.
+# gaps, after FILE's model prefix if it has one. An ID wired on ID is the
+# piece's own and is left alone.
 idents = []                         # per group, what its programs are named
 for g, members in enumerate(groups):
     entry = entries[members[0]]
@@ -2606,7 +2663,7 @@ for g, members in enumerate(groups):
     rows = name_rows([entries[i] for i in members])
     number = g + FIRST_ID           # which program this is
     if not explicit:
-        ident = str(number)
+        ident = (prefix + ID_SEP if prefix else "") + str(number)
     idents.append(ident)
     try:
         setups = brep_to_setups(brep, entry[7], entry[8], entry[10])

@@ -85,7 +85,9 @@ component also returns the cut list,
 name comes in the same way and is kept through the folding: copies of one
 shape that carry different names share a program but keep a cut list line
 each. Programs are numbered from 1, and the cut list's `ID` is the number on
-the file name.
+the file name. Given the model's file name on `FILE`
+(`2471-MM-fitting.3dm`), the numbers carry its model prefix — `MM-1`, in the
+file name and the cut list alike.
 
 Edge banding comes in the same way: a pattern per part (`0011`, `1010` …,
 read clockwise on the part's own plane) becomes a graphic comment on each

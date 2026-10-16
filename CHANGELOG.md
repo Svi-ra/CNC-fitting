@@ -9,6 +9,42 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.18.0] — 2026-10-16
+
+Programs can carry the model's prefix: `MM-1_480x232-B_1.mpr` in place of
+`1_480x232-B_1.mpr`, and `MM-1` in the cut list.
+
+### Added
+
+- **`gh_brep2mpr.py`: `FILE`**, an optional str input (Item access) for the
+  input file's name or path, in the form `OrderNumber-ModelPrefix-fitting`.
+  The folder and extension are dropped and the second part, after cleaning
+  for a file name, goes before every program number, joined by the new
+  setting `ID_SEP` (`-`). So `2471-MM-fitting.3dm` gives `MM-1`, `MM-2` …
+  in `NAME` and in `TABLE`'s `ID`, and `INFO` names the prefix it used. A
+  name without three parts gives a `WARNING` and plain numbers. With `FILE`
+  unwired the IDs are plain numbers as before. An `ID` wired on `ID` isn't
+  prefixed. The name has to come in on `FILE`, because ShapeDiver doesn't
+  let the script read it from the Rhino document.
+
+### Changed
+
+- **The cut list:** `gh_cutlist2json.py` writes a prefixed ID into `Nr.` as
+  text, as it already did for any ID that isn't a whole number. Only its
+  docstring changed.
+
+### Tested
+
+- `gh_brep2mpr.py` run with Rhino and Grasshopper stubbed, with `B` left
+  empty, on these `FILE` values: unwired, a bare name, a name with an
+  extension, a Windows path, a POSIX path with a space in the prefix,
+  `Noptiera-1.dxf`, an empty prefix, and an empty string. Also checked
+  `file_name` and `table_row` on a prefixed ID.
+- A `TABLE` with `MM-` IDs run through `gh_cutlist2json.py` and
+  `gh_json2xlsx.py`: `Nr.` reads `MM-1`, `MM-2`, `MM-12` and `MM-3`, and
+  the blocks and edge cells are unchanged. Not yet run on real Breps in
+  Grasshopper.
+
 ## [0.17.0] — 2026-10-16
 
 Two more ways to write the cut list's `.xlsx`: one workbook with a single
