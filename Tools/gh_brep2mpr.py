@@ -22,7 +22,7 @@ Component setup
                                             "ABS 22/1=1", optional
     input   FILE   str      access = Item   the input file's name or path,
                                             OrderNumber-ModelPrefix-fitting,
-                                            optional: the programs' prefix
+                                            optional: the programs' suffix
     output  MPR    -                        one whole program per setup,
                                             line endings already embedded
     output  NAME   -                        the file name for each program
@@ -133,7 +133,7 @@ gets an INFO line saying what kept them apart -- the material, the grain, or
 the first vertex or face that differs, with both values.
 
 Folding copies in does not eat any numbers: the programs are numbered by
-program, 1, 2, 3 ... -- MM-1, MM-2, MM-3 ... with a model prefix, see File
+program, 1, 2, 3 ... -- 1MM, 2MM, 3MM ... with a model suffix, see File
 names -- in the order the pieces come in, so the numbering runs on without
 gaps however many solids were folded together. A piece with an ID
 of its own on ID keeps it -- the ID of the first solid of a group names the
@@ -144,9 +144,9 @@ Material and grain direction
 DIR and MAT carry the per-part data the geometry does not. Each is a plain
 list as long as the list of parts, read in the order the parts arrive on B:
 
-    DIR   True -- the first dimension of the piece runs along the grain, as
-          modelled. False -- the piece is turned 90 deg across the grain, so
-          its two dimensions swap in the cut list.
+    DIR   False -- the first dimension of the piece runs along the grain, as
+          modelled. True -- the piece is turned 90 deg across the grain, so
+          its two dimensions swap in the cut list and the file name.
     MAT   interior, base, ... -- free text, carried through as given.
 
 Either may be left unwired: the pieces then all run along the grain, with no
@@ -228,8 +228,8 @@ TABLE is the cut list: a header line and then one line per piece.
     base;1;560;300;1;Side left;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
     base;1;560;300;1;Side right;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
 
-ID is which program the line is for, counting from FIRST_ID (1) -- MM-1,
-MM-2 ... with a model prefix -- and matches the one on the file name.
+ID is which program the line is for, counting from FIRST_ID (1) -- 1MM,
+2MM ... with a model suffix -- and is the one the file name starts with.
 Identical solids folded into one program share that one number, and the
 numbering has no gaps. Lungime is the dimension along the
 grain -- the long side of the panel unless DIR said otherwise.
@@ -251,29 +251,36 @@ or none, there is one line and Cantitate is that total.
 
 File names
 ----------
-    <ID>_<length>x<width>-<F|B>_<quantity>.mpr
+    <ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr
+    1MM_Z_x1_480x232.mpr
 
-The letter is the side facing the operator, not the tools: `B` = face up, as
-modelled, so the operator sees the back. `F` = turned over. The quantity is
+The sizes are the cut list's Lungime and Latime, the grain-wise one first,
+so a piece laid across the grain (DIR True) reads 232x480 here and there
+even though its program runs 480 along X.
+
+The ID is the number with FILE's model suffix, 1MM -- see below. The letter is the side facing the
+operator, not the tools: `Z` = the back, the piece face up as modelled (the
+B setup); `Y` = the face, turned over (F). The quantity is
 the sum of QTY over the identical solids folded into this program (1 per
 solid if nothing came in on QTY), and is the same on every program of one
 piece. With no ID
 input the programs are simply numbered 1, 2, 3 ... in order -- from
 FIRST_ID, the way the cut list's Nr. counts.
 
-The model prefix
+The model suffix
 ----------------
 FILE names the model the parts come from, as OrderNumber-ModelPrefix-fitting
 -- 2471-MM-fitting.3dm, or the whole path to it. Its second part, MM, goes
-before every number the component gives out, joined by ID_SEP:
+right after every number the component gives out, in the file name and the
+cut list alike:
 
-    MM-1_480x232-B_1.mpr        MM-1 in the cut list's ID, and its Nr.
+    1MM_Z_x1_480x232.mpr        1MM in the cut list's ID, and its Nr.
 
 A folder or an extension on FILE is dropped first; the order number is not
-used. A name without three parts -- Noptiera-1.dxf -- gives no prefix and a
+used. A name without three parts -- Noptiera-1.dxf -- gives no suffix and a
 WARNING in INFO, and the programs are numbered as before; so does FILE left
 unwired, without the warning. An ID wired on ID is the piece's own and gets
-no prefix. The component never reads the file name off the Rhino document
+no suffix. The component never reads the file name off the Rhino document
 itself: ShapeDiver forbids that, so it has to come in on FILE.
 """
 
@@ -306,7 +313,6 @@ CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 FIRST_ID = 1        # the number of the first program, when ID is unwired
-ID_SEP = "-"        # between FILE's model prefix and the number: MM-1
 
 MERGE_IDENTICAL = True  # solids of the same shape share one program
 DUP_TOL = 0.01          # two solids count as the same shape within this, mm
@@ -2206,6 +2212,12 @@ def panel_size(brep):
     return lx, ly
 
 
+def grain_size(lx, ly, along_grain):
+    """(Lungime, Latime): the placed X and Y sizes, the one along the grain
+    first -- swapped for a piece whose grain runs across its first side."""
+    return (lx, ly) if along_grain else (ly, lx)
+
+
 def table_row(material, ident, lx, ly, along_grain, qty, name="",
               edge_mats=None):
     """One cut list line.
@@ -2216,7 +2228,7 @@ def table_row(material, ident, lx, ly, along_grain, qty, name="",
     rather than split the line; so are the banding materials, which follow
     in L-1, L-2, W-1, W-2 -- see table_edges.
     """
-    lungime, latime = (lx, ly) if along_grain else (ly, lx)
+    lungime, latime = grain_size(lx, ly, along_grain)
     name = " ".join(name.replace(TABLE_SEP, " ").split())
     edges = [" ".join(m.replace(TABLE_SEP, " ").split())
              for m in table_edges(edge_mats or {}, along_grain)]
@@ -2239,10 +2251,20 @@ def name_rows(members):
     return list(rows.items())
 
 
-def file_name(ident, part, mark, qty):
-    """<ID>_<length>x<width>-<F|B>_<quantity>.mpr"""
-    return "%s_%sx%s-%s_%s%s" % (ident, fnum(part.lx), fnum(part.ly),
-                                 mark, qty, EXT)
+# The letter a file name gives the side facing the operator: Y the face,
+# Z the back -- F and B as the setups call them.
+FACING_MARK = {"F": "Y", "B": "Z"}
+
+
+def file_name(ident, part, mark, qty, along_grain):
+    """<ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr
+
+    The sizes are the cut list's, grain-wise first -- see grain_size -- not
+    the program's X and Y, so a file and its cut list line read the same.
+    """
+    lungime, latime = grain_size(part.lx, part.ly, along_grain)
+    return "%s_%s_x%s_%sx%s%s" % (ident, FACING_MARK[mark], qty,
+                                  fnum(lungime), fnum(latime), EXT)
 
 
 def copy_label(entry):
@@ -2389,10 +2411,10 @@ def clean(text):
 
 
 def model_prefix(values):
-    """FILE -> (the model prefix or "", a line for INFO or None).
+    """FILE -> (the model suffix or "", a line for INFO or None).
 
     FILE is OrderNumber-ModelPrefix-fitting, maybe with a folder in front
-    and an extension behind: the second part is the prefix. No os.path --
+    and an extension behind: the second part is the suffix. No os.path --
     the name may be a Windows path read anywhere, and the fewer imports the
     easier ShapeDiver's review.
     """
@@ -2408,12 +2430,12 @@ def model_prefix(values):
     parts = [p.strip() for p in base.split("-")]
     if len(parts) < 3 or not parts[1]:
         return "", ("WARNING: FILE %s is not OrderNumber-ModelPrefix-fitting "
-                    "- the programs are numbered without a model prefix"
+                    "- the programs are numbered without a model suffix"
                     % text)
     prefix = clean(parts[1])
-    return prefix, ("model prefix %s, from FILE %s - programs %s%s%d, %s%s%d "
-                    "..." % (prefix, base, prefix, ID_SEP, FIRST_ID, prefix,
-                             ID_SEP, FIRST_ID + 1))
+    return prefix, ("model suffix %s, from FILE %s - programs %d%s, %d%s "
+                    "..." % (prefix, base, FIRST_ID, prefix, FIRST_ID + 1,
+                             prefix))
 
 
 def default_id(path, j, count):
@@ -2522,7 +2544,8 @@ for path, items in branches_of(B):
 
         material = str(at(materials, n, "")).strip()
         panel_name = str(at(panel_names, n, "")).strip()
-        along_grain = as_bool(at(directions, n, True), True)
+        # DIR comes in True for a piece laid across the grain
+        along_grain = not as_bool(at(directions, n, False), False)
 
         # Banding: the sides of the part's plane, turned into the ways they
         # face in the world. None when it cannot be read -- that part then
@@ -2651,7 +2674,7 @@ for i, entry in enumerate(entries):
 
 # Folding copies in must not eat the numbers of the pieces after them, so the
 # programs are numbered by group: one number per program, 1, 2, 3 ... with no
-# gaps, after FILE's model prefix if it has one. An ID wired on ID is the
+# gaps, followed by FILE's model suffix if it has one. An ID wired on ID is the
 # piece's own and is left alone.
 idents = []                         # per group, what its programs are named
 for g, members in enumerate(groups):
@@ -2663,12 +2686,12 @@ for g, members in enumerate(groups):
     rows = name_rows([entries[i] for i in members])
     number = g + FIRST_ID           # which program this is
     if not explicit:
-        ident = (prefix + ID_SEP if prefix else "") + str(number)
+        ident = str(number) + prefix
     idents.append(ident)
     try:
         setups = brep_to_setups(brep, entry[7], entry[8], entry[10])
         for mark, part in setups:
-            name = file_name(ident, part, mark, qty)
+            name = file_name(ident, part, mark, qty, along_grain)
             if name in taken:
                 taken[name] += 1
                 stem = name[:-len(EXT)] if EXT else name

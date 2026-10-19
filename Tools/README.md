@@ -133,7 +133,7 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `PLN` | Plane | **List** | each part's own plane — needed wherever `BAND` bands an edge |
 | input | `BANDTYPE` | str | **List** | banding material code per side, `"1221"` — optional |
 | input | `BAND_MAP` | str | **List** | what each code stands for, `"ABS 22/1=1"` — optional |
-| input | `FILE` | str | Item | the input file's name or path, `OrderNumber-ModelPrefix-fitting` — optional; the programs' model prefix |
+| input | `FILE` | str | Item | the input file's name or path, `OrderNumber-ModelPrefix-fitting` — optional; the programs' model suffix |
 | output | `MPR` | — | | one whole program per setup, line endings embedded |
 | output | `NAME` | — | | the file name for each program |
 | output | `INFO` | — | | one report per part |
@@ -148,8 +148,8 @@ flat list in part order. With no `ID` the programs are simply numbered in the
 order they are written — `1`, `2`, `3` … — with no gaps, however many solids
 were folded together. `FIRST_ID` is where the count starts; it is `1` so the
 file names match the `Nr.` of the Excel cut list. With `FILE` wired the
-numbers carry the model's prefix — `MM-1`, `MM-2` … — see
-[The model prefix](#the-model-prefix).
+numbers carry the model's suffix — `1MM`, `2MM` … — see
+[The model suffix](#the-model-suffix).
 
 `DIR`, `MAT`, `PNAME`, `BAND`, `PLN` and `BANDTYPE` are different: they are
 plain lists as long as the list of parts, read straight through in the order
@@ -222,8 +222,8 @@ the piece is turned between the two.
 So a piece with Ø8 *and* Ø4.5 holes in its top edge comes out as two programs:
 
 ```
-ND0142_800x400-B_4.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
-ND0142_800x400-F_4.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
+ND0142_Z_x4_800x400.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
+ND0142_Y_x4_800x400.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
 ```
 
 The first drills the Ø8 with the piece face up. The second is written for the
@@ -276,8 +276,8 @@ reach in one clamping — but the radius takes the right edge and the
 upper-right corner. So it comes out as two programs instead:
 
 ```
-5_323x78-F_2.mpr   turned over about its short axis   7 x BohrHoriz
-5_323x78-B_2.mpr   face up, turned end for end        2 x BohrVert
+5_Y_x2_323x78.mpr   turned over about its short axis   7 x BohrHoriz
+5_Z_x2_323x78.mpr   face up, turned end for end        2 x BohrVert
 ```
 
 `F` drills the edges with the radius at the upper-left; then the piece is
@@ -474,7 +474,7 @@ list as long as the list of parts, read in the order the parts arrive on `B`:
 
 | Input | Meaning |
 | --- | --- |
-| `DIR` | `True` — the first dimension runs along the grain, as modelled. `False` — the piece is laid 90° across the grain, so its two dimensions swap in the cut list. |
+| `DIR` | `False` — the first dimension runs along the grain, as modelled. `True` — the piece is laid 90° across the grain, so its two dimensions swap in the cut list and the file name. |
 | `MAT` | `interior`, `base`, … — free text, carried through as given. |
 
 Either may be left unwired: the pieces then all run along the grain, with no
@@ -494,8 +494,8 @@ base;2;560;300;1;Side right;ABS 22/1;;ABS 22/0.5;ABS 22/0.5
 ```
 
 `ID` is which program the line is for — the very ID the file name starts
-with: counted from `FIRST_ID` (1), after the model prefix if `FILE` gives
-one (`MM-1`), or the piece's own when it came in on `ID`. Solids folded into
+with: counted from `FIRST_ID` (1), followed by the model suffix if `FILE`
+gives one (`1MM`), or the piece's own when it came in on `ID`. Solids folded into
 one program share that one
 number, and the numbering runs on without gaps. `Lungime` is the dimension
 along the grain — the long side of the panel unless `DIR` said otherwise. A
@@ -515,9 +515,10 @@ line; with one name, or `PNAME` unwired, there is one line per program and
 `Cantitate` is the whole total. `INFO` lists the names of a program, and each
 folded-in copy's line names it too.
 
-`DIR` changes the cut list only, never the program: the machine has no notion
-of grain, so the sizes swap on the sheet while the holes stay exactly where
-the model put them.
+`DIR` changes the cut list and the file name only, never the program: the
+machine has no notion of grain, so the sizes swap on the sheet and in the
+name while the program still runs the long side along X and the holes stay
+exactly where the model put them.
 
 `L-1` … `W-2` are the banding materials — see
 [Banding materials](#banding-materials). They are empty when `BANDTYPE` is
@@ -690,11 +691,15 @@ no materials either.
 ### File names
 
 ```
-<ID>_<length>x<width>-<F|B>_<quantity>.mpr        ND0142_800x400-B_4.mpr
+<ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr     ND0142_Z_x4_800x400.mpr
 ```
 
-The letter is the side facing the operator: `B` = face up as modelled, so
-the operator sees the back; `F` = turned over. Whether a setup is also turned
+The letter is the side facing the operator: `Z` = the back, the piece face
+up as modelled (the `B` setup `INFO` names); `Y` = the face, turned over
+(`F`). The sizes are the cut list's `Lungime` and `Latime`, the one along the
+grain first, so a file and its cut list line always read the same — a piece
+laid across the grain (`DIR` `True`) reads `232x480` in both, though its
+program runs 480 along X. Whether a setup is also turned
 end for end is not in the name — `INFO` says it, and the program itself shows
 where everything is. Of two programs, the one written first is the one to run
 first; it may be `F`. The quantity is the sum of
@@ -704,32 +709,32 @@ Two pieces asking for the same name is caught and reported rather than
 silently overwriting — give them distinct IDs. Change `EXT` for a different
 extension, or `""` for a bare name.
 
-### The model prefix
+### The model suffix
 
 `FILE` names the model the parts come from, as
 `OrderNumber-ModelPrefix-fitting` — `2471-MM-fitting.3dm`, or the whole path
-to it. Its second part goes before every number the component gives out,
-joined by `ID_SEP` (`-`):
+to it. Its second part goes right after every number the component gives
+out:
 
 ```
 FILE  D:\Orders\2471-MM-fitting.3dm
-NAME  MM-1_480x232-B_1.mpr, MM-2_591x70-B_2.mpr …
-TABLE base;MM-1;480;232;1;Bottom;…
+NAME  1MM_Z_x1_480x232.mpr, 2MM_Z_x2_591x70.mpr …
+TABLE base;1MM;480;232;1;Bottom;…
 ```
 
 The folder and the extension are dropped first; the order number is not
-used. The cut list carries the same `MM-1` in `ID`, and so the Excel sheet in
+used. The cut list carries the same `1MM` in `ID`, and so the Excel sheet in
 `Nr.`, as text. A character a file name should not hold becomes `_` —
-`NP 2` gives `NP_2-1`. A name without three parts, such as `Noptiera-1.dxf`,
-gives no prefix and a `WARNING` in `INFO`, and the programs are numbered
+`NP 2` gives `1NP_2`. A name without three parts, such as `Noptiera-1.dxf`,
+gives no suffix and a `WARNING` in `INFO`, and the programs are numbered
 `1`, `2` … as before; so does `FILE` left unwired, without the warning. An
-`ID` wired on `ID` is the piece's own and gets no prefix. `INFO` names the
-prefix it used.
+`ID` wired on `ID` is the piece's own and gets no suffix. `INFO` names the
+suffix it used.
 
 The component does not read the file name off the Rhino document itself —
 ShapeDiver forbids it — so it has to come in on `FILE`. The `Nr.` column is
-7.71 characters wide, as in the reference workbook: room for `MM-12`, not
-for a long prefix.
+7.71 characters wide, as in the reference workbook: room for `12MM`, not
+for a long suffix.
 
 ### Line endings
 
@@ -767,7 +772,6 @@ the piece for the gripper — not milled.
 | `DIA_TOL` | 0.2 | how far a measured diameter may sit from a listed one and still count as that bit |
 | `EXT` | `.mpr` | appended to every `NAME` |
 | `FIRST_ID` | 1 | the number of the first program when `ID` is unwired |
-| `ID_SEP` | `-` | between `FILE`'s model prefix and the number: `MM-1` |
 | `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
 | `SAW_ALONG` | `"X"` | the directions the saw unit can run |
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
@@ -815,7 +819,7 @@ Code 128 of the same name below it.
 
 ```
 +--------------------------+
-|      1_600x400-F_4       |
+|     1_Y_x4_600x400       |
 |                          |
 |     || ||| | || |||      |
 +--------------------------+
@@ -860,7 +864,7 @@ Below 2 dots at 203 dpi a handheld starts to miss, so the component will not
 go thinner: a name too long to fit is still written out, and `INFO` says which
 one and by how many dots it would be clipped. On the default stock that is
 about 20 characters at the 2-dot module — roughly what
-`<ID>_<length>x<width>-<F|B>_<qty>.mpr` comes to, which is why the default is
+`<ID>_<Y|Z>_x<qty>_<length>x<width>.mpr` comes to, which is why the default is
 70 mm wide.
 
 ### What can be in a name
@@ -948,10 +952,10 @@ row 5…   1   | 490         | 100        | 4     | ABS 22/1 | ABS 22/1 | 1 | �
   them is on `CAT`, its lines still in program order — and `INFO` names the
   categories it put together.
 * **`Nr.` is the program `ID`** — the number the `.mpr` file name starts with,
-  so `7` is `7_480x232-B_1.mpr`. It does not count rows: the lines of one
+  so `7` is `7_Z_x1_480x232.mpr`. It does not count rows: the lines of one
   program share its number, and a block starts at its first program's
-  number. An `ID` wired as text (`106F`), or one with the model prefix
-  (`MM-7`, for `MM-7_480x232-B_1.mpr`), is written as text; a line with no
+  number. An `ID` wired as text (`106F`), or one with the model suffix
+  (`7MM`, for `7MM_Z_x1_480x232.mpr`), is written as text; a line with no
   `ID` gets an empty `Nr.`.
 * `Lungime`, `Latime` and `cant.` are the cut list's `Lungime`, `Latime` and
   `Cantitate` unchanged; `COMENTARII` is `Denumire`, the panel name. The

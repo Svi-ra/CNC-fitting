@@ -95,8 +95,8 @@ several lines under one ID; each stays a row of its own, with its own name
 and its own share of the quantity.
 
 Nr. is the program ID, so a row leads straight to its .mpr: 7 is
-7_480x232-B_1.mpr, and MM-7, with gh_brep2mpr's model prefix, is
-MM-7_480x232-B_1.mpr -- written as text, as it stands. It does not count
+7_Z_x1_480x232.mpr, and 7MM, with gh_brep2mpr's model suffix, is
+7MM_Z_x1_480x232.mpr -- written as text, as it stands. It does not count
 the rows -- the lines of one program share its number, and a material's
 block starts at whatever number its first program has. A line with no ID has no file to point at, and its Nr.
 is left empty rather than given a number that may be another program's.
@@ -417,7 +417,7 @@ def row_number(ident):
 
     An ID that is a whole number is written as a number, so Excel sorts it
     as one; any other ID -- one wired on gh_brep2mpr's ID, or one with
-    its model prefix, MM-7 -- as it is. A
+    its model suffix, 7MM -- as it is. A
     line with no ID gets None, an empty cell.
     """
     ident = (ident or "").strip()

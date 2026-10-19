@@ -33,7 +33,7 @@ bars so the code fits the stock.
 The label
 ---------
     +--------------------------+
-    |      0_600x400-F_4       |   the name, centred, up to two lines
+    |     1_Y_x4_600x400       |   the name, centred, up to two lines
     |                          |
     |     || ||| | || |||      |   Code 128 of the same name
     +--------------------------+

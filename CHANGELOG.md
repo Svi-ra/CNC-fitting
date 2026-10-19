@@ -9,6 +9,47 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.19.0] — 2026-10-19
+
+New file names, `1MM_Z_x1_480x232.mpr` in place of `MM-1_480x232-B_1.mpr`:
+the model's code now follows the number, in the cut list too, and the sizes
+are written in the cut list's order. `DIR` is read the other way round.
+
+### Changed
+
+- **`gh_brep2mpr.py`: file names** are
+  `<ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr`. The facing mark is `Z`
+  for the old `B` (face up, the operator sees the back) and `Y` for the old
+  `F` (turned over). The setups and `INFO` still call them `B` and `F`.
+- **The model's code is a suffix:** `2471-MM-fitting.3dm` on `FILE` gives
+  `1MM`, `2MM` … in `NAME`, in `TABLE`'s `ID` and in `INFO`, instead of
+  `MM-1`. The `ID_SEP` setting is removed. An `ID` wired on `ID` is still
+  used as given. Cut lists from 0.18.0 carry `MM-1`-style IDs and no longer
+  match newly written files.
+- **`DIR` is inverted:** `False`, or unwired, means the first dimension runs
+  along the grain; `True` means the piece is laid across it. This matches
+  how `DIR` arrives from the definition.
+
+### Fixed
+
+- **`NAME` and `TABLE` gave the sizes in a different order** for a piece
+  laid across the grain: the cut list put the grain-wise side first, but the
+  file name always put the program's X first. Both now take them from one
+  helper, `grain_size`, so a file and its cut list line read the same. The
+  program itself is unchanged and still runs the long side along X.
+
+### Changed (docs only)
+
+- `gh_cutlist2json.py` and `gh_name2zpl.py`: docstring examples use the new
+  names. `gh_cutlist2json.py` already wrote a non-numeric ID such as `1MM`
+  into `Nr.` as text.
+
+### Tested
+
+- `file_name`, `table_row` and `grain_size` run outside Grasshopper on a
+  480 × 232 panel with the grain both ways, and on `1A_Z_x1_600x300`. Both
+  scripts parse. Not yet run on real Breps in Grasshopper.
+
 ## [0.18.0] — 2026-10-16
 
 Programs can carry the model's prefix: `MM-1_480x232-B_1.mpr` in place of
