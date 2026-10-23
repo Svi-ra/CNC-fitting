@@ -77,8 +77,8 @@ boring and sawing only: a shaped outline is not milled, since the machine has
 no router, so the piece must arrive cut to shape.
 
 Panels of the same shape are converted once however many times they appear:
-the quantities are added up and the file is named for the total. Material and
-grain direction come in beside the geometry — panels of the same shape cut
+the quantities are added up and the file is named for the total. Material comes
+in beside the geometry and the grain is read off each panel's own plane — panels of the same shape cut
 from different board, or laid across the grain, stay separate pieces — and the
 component also returns the cut list,
 `Material;ID;Lungime;Latime;Cantitate;Denumire;L-1;L-2;W-1;W-2`. Each panel's

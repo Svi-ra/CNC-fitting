@@ -10,12 +10,12 @@ Component setup
     input   B      Brep     access = Tree   one part per branch
     input   ID     str      access = Tree   piece ID, optional
     input   QTY    int      access = Tree   how many of this piece, optional
-    input   DIR    bool     access = List   grain direction per part, optional
     input   MAT    str      access = List   material per part, optional
     input   PNAME  str      access = List   panel name per part, optional
     input   BAND   str      access = List   edge banding per part, optional
-    input   PLN    Plane    access = List   each part's own plane, needed
-                                            wherever BAND bands an edge
+    input   PLN    Plane    access = List   each part's own plane: its Y axis
+                                            is the grain, and BAND is read
+                                            against it
     input   BANDTYPE str    access = List   banding material code per side,
                                             per part, optional
     input   BAND_MAP str    access = List   what each code stands for,
@@ -141,17 +141,22 @@ programs, and where the copies carried IDs of their own, INFO says so.
 
 Material and grain direction
 ----------------------------
-DIR and MAT carry the per-part data the geometry does not. Each is a plain
+PLN and MAT carry the per-part data the geometry does not. Each is a plain
 list as long as the list of parts, read in the order the parts arrive on B:
 
-    DIR   False -- the first dimension of the piece runs along the grain, as
-          modelled. True -- the piece is turned 90 deg across the grain, so
-          its two dimensions swap in the cut list and the file name.
+    PLN   the part's own plane: the grain runs along its Y axis. Y along the
+          long side -- the program's X -- and the piece runs along the grain;
+          Y along the short side and it is laid 90 deg across the grain, so
+          its two dimensions swap in the cut list and the file name. Only
+          the axes are read, and they have to lie square with the panel's
+          sides, within BAND_ANGLE_TOL.
     MAT   interior, base, ... -- free text, carried through as given.
 
 Either may be left unwired: the pieces then all run along the grain, with no
-material named. A list of the wrong length is read as far as it goes -- the
-parts past its end fall back on those defaults -- and INFO says so.
+material named, and INFO warns that PLN is missing. A list of the wrong
+length is read as far as it goes -- the parts past its end fall back on
+those defaults -- and INFO says so. A missing or crooked plane is taken
+along the grain too, with a WARNING for that part.
 
 Both take part in the identical-panel test above: two solids of the same
 shape cut from different material, or with the grain the other way, are
@@ -160,7 +165,7 @@ different pieces and each gets a program.
 Edge banding
 ------------
 BAND and PLN say which edges of each piece are banded, so the operator sees
-it in woodWOP. Both are plain lists, one item per part, like DIR and MAT:
+it in woodWOP. Both are plain lists, one item per part, like PLN and MAT:
 
     BAND  "0011", "1010", "1000" ... four characters, 1 = banded. Text, so a
           leading zero survives: 0011 wired as a number arrives as 11.
@@ -232,7 +237,7 @@ ID is which program the line is for, counting from FIRST_ID (1) -- 1MM,
 2MM ... with a model suffix -- and is the one the file name starts with.
 Identical solids folded into one program share that one number, and the
 numbering has no gaps. Lungime is the dimension along the
-grain -- the long side of the panel unless DIR said otherwise.
+grain -- the long side of the panel unless PLN's Y axis says otherwise.
 
 L-1 and L-2 are the banding materials of the two edges along Lungime, W-1
 and W-2 of the two along Latime, as the first program lies: L-1 is its
@@ -241,7 +246,7 @@ the other way round for a piece laid across the grain. An edge with no
 banding, or no material, is left empty.
 
 Denumire is the panel's name, from PNAME: a plain list, one item per part,
-like DIR and MAT, carried through as given. It is not part of the
+like PLN and MAT, carried through as given. It is not part of the
 identical-panel test -- a left and a right side of the same shape still
 share one program -- so a program whose copies carry different names gets
 a line per name, each with the quantity of the solids that bore it, all
@@ -255,7 +260,8 @@ File names
     1MM_Z_x1_480x232.mpr
 
 The sizes are the cut list's Lungime and Latime, the grain-wise one first,
-so a piece laid across the grain (DIR True) reads 232x480 here and there
+so a piece laid across the grain (PLN's Y axis along the short side) reads
+232x480 here and there
 even though its program runs 480 along X.
 
 The ID is the number with FILE's model suffix, 1MM -- see below. The letter is the side facing the
@@ -1576,6 +1582,41 @@ def band_world_sides(sides, plane):
     return out, None
 
 
+def grain_along(brep, plane):
+    """Whether the grain runs along the piece's long side, read off its plane.
+
+    -> (along, None) or (True, why not). The grain runs along the plane's Y
+    axis; the long side is the one place turns to X -- world X, or world Y
+    for a piece longer that way. Like the banding, only the axes are read,
+    and they have to lie square with the panel's sides: anything else falls
+    back on along the long side, with the reason.
+    """
+    if plane is None:
+        return True, "no plane on PLN"
+    try:
+        ya, za = vnorm(p3(plane.YAxis)), vnorm(p3(plane.ZAxis))
+    except AttributeError:
+        return True, "the item on PLN is not a plane"
+
+    cos_tol = math.cos(math.radians(BAND_ANGLE_TOL))
+    if abs(za[2]) < cos_tol:
+        return True, ("the plane on PLN does not lie in the panel - its Z "
+                      "axis is %s deg off the panel's thickness"
+                      % fnum(math.degrees(math.acos(min(1.0, abs(za[2])))), 1))
+    box = brep.GetBoundingBox(True)
+    quarter = LONG_X and (box.Max.X - box.Min.X
+                          < box.Max.Y - box.Min.Y - GEO_TOL)
+    along = abs(ya[1]) if quarter else abs(ya[0])
+    across = abs(ya[0]) if quarter else abs(ya[1])
+    if along >= cos_tol:
+        return True, None
+    if across >= cos_tol:
+        return False, None
+    ang = math.degrees(math.atan2(ya[1], ya[0])) % 90.0
+    return True, ("the plane on PLN has its Y axis %s deg off the panel's "
+                  "sides" % fnum(min(ang, 90.0 - ang), 1))
+
+
 def same_bands(a, b):
     """Two pieces banded alike -- on the same sides as they lie in the world.
 
@@ -2371,7 +2412,7 @@ class SideInput(object):
 def column(values):
     """A per-part input flattened to one value per part, in input order.
 
-    DIR and MAT are plain lists running parallel to the parts, so unlike ID
+    PLN and MAT are plain lists running parallel to the parts, so unlike ID
     and QTY there is nothing to match up by branch: whatever comes in is read
     straight through in order.
     """
@@ -2385,20 +2426,6 @@ def at(values, n, default):
     """Item *n* of a per-part list, or the default past its end."""
     if n < len(values) and values[n] is not None:
         return values[n]
-    return default
-
-
-def as_bool(value, default=True):
-    """A Grasshopper boolean may arrive as a bool, a number or a string."""
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    text = str(value).strip().lower()
-    if text in ("true", "1", "1.0", "yes", "y", "t"):
-        return True
-    if text in ("false", "0", "0.0", "no", "n", "f"):
-        return False
     return default
 
 
@@ -2458,10 +2485,6 @@ try:
 except NameError:
     QTY = None
 try:
-    DIR
-except NameError:
-    DIR = None
-try:
     MAT
 except NameError:
     MAT = None
@@ -2498,7 +2521,6 @@ TABLE.Add(TABLE_SEP.join(TABLE_HEADER), GH_Path(0))
 
 ids = SideInput(ID)
 qtys = SideInput(QTY)
-directions = column(DIR)
 materials = column(MAT)
 panel_names = column(PNAME)
 patterns = column(BAND)
@@ -2544,8 +2566,13 @@ for path, items in branches_of(B):
 
         material = str(at(materials, n, "")).strip()
         panel_name = str(at(panel_names, n, "")).strip()
-        # DIR comes in True for a piece laid across the grain
-        along_grain = not as_bool(at(directions, n, False), False)
+        # The grain runs along the plane's Y axis. Without a plane to read it
+        # on, the piece runs along the grain, as it did with DIR unwired.
+        plane = at(planes, n, None)
+        try:
+            along_grain, grain_why = grain_along(brep, plane)
+        except Exception as exc:
+            along_grain, grain_why = True, "grain could not be read: %s" % exc
 
         # Banding: the sides of the part's plane, turned into the ways they
         # face in the world. None when it cannot be read -- that part then
@@ -2556,7 +2583,7 @@ for path, items in branches_of(B):
         facing = None
         if why is None:
             try:
-                facing, why = band_world_sides(sides, at(planes, n, None))
+                facing, why = band_world_sides(sides, plane)
                 if facing is not None:
                     bands = frozenset(facing.values())
             except Exception as exc:
@@ -2589,15 +2616,24 @@ for path, items in branches_of(B):
                                                       band_mapping)
                 band_notes.extend(mat_notes)
 
+        # PLN unwired altogether gets one line for all parts, below.
+        if grain_why is not None and planes:
+            band_notes.append("WARNING: %s - taken along the grain, the long "
+                              "side first" % grain_why)
+
         entries.append((path, brep, ident, qty, material, along_grain,
                         explicit, bands, band_notes, panel_name, band_mats))
         n += 1
 
-# DIR, MAT, PNAME, BAND, PLN and BANDTYPE run part for part with B. A list
-# of another length still works -- the parts past its end are along the
-# grain, with no material, no name and no banding -- but it is almost always
-# a wiring mistake, so it is said out loud.
-for label, values in (("DIR", directions), ("MAT", materials),
+if n and not planes:
+    INFO.Add("WARNING: PLN is not wired - every piece is taken along the "
+             "grain, the long side first", GH_Path(0))
+
+# MAT, PNAME, BAND, PLN and BANDTYPE run part for part with B. A list of
+# another length still works -- the parts past its end are along the grain,
+# with no material, no name and no banding -- but it is almost always a
+# wiring mistake, so it is said out loud.
+for label, values in (("MAT", materials),
                       ("PNAME", panel_names), ("BAND", patterns),
                       ("PLN", planes), ("BANDTYPE", band_codes)):
     if values and len(values) != n:

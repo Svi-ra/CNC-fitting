@@ -126,11 +126,10 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | input | `B` | Brep | **Tree** | one part per branch |
 | input | `ID` | str | **Tree** | piece ID — optional |
 | input | `QTY` | int | **Tree** | how many of this piece — optional |
-| input | `DIR` | bool | **List** | grain direction per part — optional |
 | input | `MAT` | str | **List** | material per part — optional |
 | input | `PNAME` | str | **List** | panel name per part, for the cut list — optional |
 | input | `BAND` | str | **List** | edge banding per part, `"0011"` — optional |
-| input | `PLN` | Plane | **List** | each part's own plane — needed wherever `BAND` bands an edge |
+| input | `PLN` | Plane | **List** | each part's own plane — its Y axis is the grain, and `BAND` is read against it |
 | input | `BANDTYPE` | str | **List** | banding material code per side, `"1221"` — optional |
 | input | `BAND_MAP` | str | **List** | what each code stands for, `"ABS 22/1=1"` — optional |
 | input | `FILE` | str | Item | the input file's name or path, `OrderNumber-ModelPrefix-fitting` — optional; the programs' model suffix |
@@ -151,7 +150,7 @@ file names match the `Nr.` of the Excel cut list. With `FILE` wired the
 numbers carry the model's suffix — `1MM`, `2MM` … — see
 [The model suffix](#the-model-suffix).
 
-`DIR`, `MAT`, `PNAME`, `BAND`, `PLN` and `BANDTYPE` are different: they are
+`MAT`, `PNAME`, `BAND`, `PLN` and `BANDTYPE` are different: they are
 plain lists as long as the list of parts, read straight through in the order
 the parts arrive on `B`. `BAND_MAP` is a list of its own, read whole. See
 [Material, grain and the cut list](#material-grain-and-the-cut-list),
@@ -469,19 +468,22 @@ vertices or faces, or the one measurement that is out, with both values:
 
 ### Material, grain and the cut list
 
-`DIR` and `MAT` carry the per-part data the geometry does not. Each is a plain
+`PLN` and `MAT` carry the per-part data the geometry does not. Each is a plain
 list as long as the list of parts, read in the order the parts arrive on `B`:
 
 | Input | Meaning |
 | --- | --- |
-| `DIR` | `False` — the first dimension runs along the grain, as modelled. `True` — the piece is laid 90° across the grain, so its two dimensions swap in the cut list and the file name. |
+| `PLN` | the part's own plane — **the grain runs along its Y axis**. Y along the long side (the program's X) and the piece runs along the grain; Y along the short side and it is laid 90° across the grain, so its two dimensions swap in the cut list and the file name. |
 | `MAT` | `interior`, `base`, … — free text, carried through as given. |
 
-Either may be left unwired: the pieces then all run along the grain, with no
-material named. A list of the wrong length is read as far as it goes — the
-parts past its end fall back on those defaults — and `INFO` says so, because
-it is nearly always a wiring mistake. `DIR` takes a real boolean, a number, or
-`"true"` / `"false"` as text.
+Only the plane's axes are read, never its origin, and they have to lie square
+with the panel: Z within `BAND_ANGLE_TOL` (1°) of the thickness, Y within it
+of one of the panel's sides. A part with no plane, or a crooked one, is taken
+along the grain and gets a `WARNING` in `INFO`; with `PLN` not wired at all,
+every part is along the grain and `INFO` says so once. `MAT` may be left
+unwired: no material is named. A list of the wrong length is read as far as
+it goes — the parts past its end fall back on those defaults — and `INFO`
+says so, because it is nearly always a wiring mistake.
 
 Both feed the identical-panel test above, and both feed `TABLE`, the cut list:
 a header line and then one line per piece.
@@ -498,12 +500,12 @@ with: counted from `FIRST_ID` (1), followed by the model suffix if `FILE`
 gives one (`1MM`), or the piece's own when it came in on `ID`. Solids folded into
 one program share that one
 number, and the numbering runs on without gaps. `Lungime` is the dimension
-along the grain — the long side of the panel unless `DIR` said otherwise. A
+along the grain — the long side of the panel unless `PLN`'s Y axis says otherwise. A
 part the converter throws out still gets a line, sized from its bounding box,
 so nothing drops out of the list.
 
 `Denumire` is the panel's name, from `PNAME` — a plain list, one name per
-part, like `DIR` and `MAT`, carried through as given. A `;` or a line break
+part, like `PLN` and `MAT`, carried through as given. A `;` or a line break
 in a name becomes a space, so it cannot split the line. The name is **not**
 part of the identical-panel test: a left and a right side of the same shape
 still share one program. So a program whose copies carry different names gets
@@ -515,8 +517,8 @@ line; with one name, or `PNAME` unwired, there is one line per program and
 `Cantitate` is the whole total. `INFO` lists the names of a program, and each
 folded-in copy's line names it too.
 
-`DIR` changes the cut list and the file name only, never the program: the
-machine has no notion of grain, so the sizes swap on the sheet and in the
+The grain changes the cut list and the file name only, never the program:
+the machine has no notion of grain, so the sizes swap on the sheet and in the
 name while the program still runs the long side along X and the holes stay
 exactly where the model put them.
 
@@ -528,12 +530,12 @@ not wired.
 
 `BAND` and `PLN` say which edges of each piece are banded, so the operator
 sees it on the program in woodWOP. Both are plain lists, one item per part,
-like `DIR` and `MAT`:
+like `MAT`:
 
 | Input | Meaning |
 | --- | --- |
 | `BAND` | `"0011"`, `"1010"`, `"1000"` … — four characters, `1` = that side is banded. Wire it as **text**: `0011` wired as a number arrives as `11`. |
-| `PLN` | the part's own plane, lying in the panel. It says which way round the piece is, so the pattern can be read against it. |
+| `PLN` | the part's own plane, lying in the panel — the same plane that gives the grain. It says which way round the piece is, so the pattern can be read against it. |
 
 **How a pattern is read.** On the plane as seen looking down its Z axis — X
 to the right, Y away, Z up towards the viewer — starting from the **bottom**
@@ -635,8 +637,8 @@ setups, the macros and the file names are exactly what they would be with
 
 No marks is safer than marks on the wrong edges. A part with no pattern, an
 empty one or `0000` simply has no marks, and needs no plane. A `BAND` or `PLN`
-list of the wrong length is read as far as it goes and reported, as `DIR`
-and `MAT` are.
+list of the wrong length is read as far as it goes and reported, as `MAT`
+is.
 
 Because the origin is not read, a plane that belongs to another panel — or to
 this one where it stood in the assembly — is **not** caught if it happens to
@@ -698,7 +700,7 @@ The letter is the side facing the operator: `Z` = the back, the piece face
 up as modelled (the `B` setup `INFO` names); `Y` = the face, turned over
 (`F`). The sizes are the cut list's `Lungime` and `Latime`, the one along the
 grain first, so a file and its cut list line always read the same — a piece
-laid across the grain (`DIR` `True`) reads `232x480` in both, though its
+laid across the grain (`PLN`'s Y axis along the short side) reads `232x480` in both, though its
 program runs 480 along X. Whether a setup is also turned
 end for end is not in the name — `INFO` says it, and the program itself shows
 where everything is. Of two programs, the one written first is the one to run

@@ -9,6 +9,34 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.20.0] — 2026-10-23
+
+The grain comes from each panel's own plane: `DIR` is gone.
+
+### Removed
+
+- **`gh_brep2mpr.py`: `DIR`.** Delete the input from the Script component;
+  a leftover wire is ignored. The unused `as_bool` helper went with it.
+
+### Changed
+
+- **The grain runs along `PLN`'s Y axis.** Y along the long side — the
+  program's X — and the piece runs along the grain; Y along the short side
+  and it is laid across it, its sizes swapping in the cut list and the file
+  name exactly as `DIR` `True` did. The long side is the one the program
+  puts on X. As with the banding, only the axes are read, and they have to
+  lie square with the panel within `BAND_ANGLE_TOL` (1°).
+- **`PLN` is now wanted for every part**, not only banded ones. A part with
+  no plane, something that is not a plane, or a plane off the panel's
+  thickness or sides is taken along the grain, with a `WARNING` in `INFO`;
+  `PLN` not wired at all gives one `WARNING` for the whole run.
+
+### Tested
+
+- `grain_along` run outside Grasshopper on 480 × 232 and 232 × 480 boxes
+  with the Y axis along X, along Y, reversed, at 45° and missing. The script
+  parses. Not yet run on real Breps in Grasshopper.
+
 ## [0.19.0] — 2026-10-19
 
 New file names, `1MM_Z_x1_480x232.mpr` in place of `MM-1_480x232-B_1.mpr`:
