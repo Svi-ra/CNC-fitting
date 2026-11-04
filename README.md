@@ -87,11 +87,13 @@ shape that carry different names share a program but keep a cut list line
 each. Programs are numbered from 1, and the cut list's `ID` is the number on
 the file name. Given the model's file name on `FILE`
 (`2471-MM-fitting.3dm`), the numbers carry its model suffix — `1MM`, in the
-file name and the cut list alike: `1MM_Z_x1_480x232.mpr`.
+file name and the cut list alike: `1MM_Z_x1_480x232.mpr`. A map output
+lists, per program, which input solids it covers, by their place in the
+input tree.
 
 Edge banding comes in the same way: a pattern per part (`0011`, `1010` …,
 read clockwise on the part's own plane) becomes a graphic comment on each
-banded edge, a blue line just outside it, as woodWOP draws it. The marks
+banded edge, a red line just outside it, as woodWOP draws it. The marks
 are turned with the piece exactly as its bores are, so in every setup they
 sit on the edge that is really banded, and they change nothing that is
 machined. A code per side (`1221` …) and a map of what each code stands for

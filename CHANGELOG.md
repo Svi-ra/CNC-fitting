@@ -9,6 +9,30 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.21.0] — 2026-11-04
+
+A map from programs back to the input solids, and banding marks that stand
+out.
+
+### Added
+
+- **`gh_brep2mpr.py`: `MAP` output.** One branch per program, in ID order
+  (`{0}` is ID 1), holding the input indices of the solids that program
+  covers — the converted one first, then the identical copies folded into
+  it. The index is the solid's place in the flattened `B`, empty items
+  included, so List Item on the flattened input picks it out. A piece that
+  failed to convert keeps its branch. Add the output to the Script
+  component by hand.
+
+### Changed
+
+- **Banding marks are red and 20 mm thick** (were blue, 10 mm), set by the
+  new `BAND_RGB` and `BAND_WIDTH`. Position, gap and block are unchanged.
+
+### Tested
+
+- The script parses. `MAP` not yet run in Grasshopper.
+
 ## [0.20.0] — 2026-10-23
 
 The grain comes from each panel's own plane: `DIR` is gone.

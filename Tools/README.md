@@ -137,6 +137,7 @@ DXF. Paste the whole file into a **Rhino 8 Script component set to Python 3**:
 | output | `NAME` | — | | the file name for each program |
 | output | `INFO` | — | | one report per part |
 | output | `TABLE` | — | | the cut list, one line per piece |
+| output | `MAP` | — | | which input solids each program covers — see [The piece map](#the-piece-map) |
 
 `MPR` and `NAME` are parallel trees: item *i* of a branch is the program, item
 *i* of the same branch in `NAME` is what to call it. The component runs with
@@ -466,6 +467,28 @@ vertices or faces, or the one measurement that is out, with both values:
 4   same size as 1 but not folded into it: it is banded with ABS 22/1 on -Y here and with ABS 36/1 on -Y there (DUP_TOL is 0.01 mm)
 ```
 
+#### The piece map
+
+`MAP` says which input solids ended up in which program. It has one branch
+per program, in the order the programs are numbered — `{0}` is ID 1
+(`FIRST_ID`), `{1}` is ID 2, and so on — and each branch holds the input
+indices of the solids that program covers: the one converted first, then the
+copies folded into it, in input order.
+
+```
+MAP {0}  0, 3, 5      program 1 covers solids 0, 3 and 5
+    {1}  1            program 2 covers solid 1 alone
+    {2}  2
+    {3}  4
+```
+
+The index is where the solid sat on `B`, counted through the whole tree as
+Flatten lays it out — branch by branch, item by item, empty items included —
+so List Item on the flattened `B`, or on any list parallel to it such as
+`PNAME`, picks the solid back out. A piece that failed to convert keeps its
+branch, so the branches stay in step with the cut list's IDs. Add the `MAP`
+output to the Script component by hand; Grasshopper does not create it.
+
 ### Material, grain and the cut list
 
 `PLN` and `MAT` carry the per-part data the geometry does not. Each is a plain
@@ -566,11 +589,12 @@ and that does not matter: which side is which follows from the directions
 alone. A plane that is flipped (Z pointing down) is read as seen down its own
 Z, so it mirrors the order as it should.
 
-**What is written.** Each banded side becomes a blue line, 10 mm thick, set
+**What is written.** Each banded side becomes a red line, 20 mm thick, set
 10 mm outside its edge and running the edge's full length — a graphic
 comment, `<152 \Grafischer Kommentar\`, all of them in one `<121 \Block\`,
-exactly as woodWOP writes them in
-`Examples/Banding/0_330x163-B_1_banding-correct.mpr`:
+as woodWOP writes them in
+`Examples/Banding/0_330x163-B_1_banding-correct.mpr` — that reference line
+is blue and 10 mm; ours is `BAND_RGB` and `BAND_WIDTH`, so it stands out:
 
 ```
 <121 \Block\
@@ -603,8 +627,8 @@ only the second half of its 2 × 1 box, which is why `BR` is twice the edge.
 numbers on from the macros before the block, and `!` follows the last
 comment directly. The upper edge is not in any example; it is the lower one
 mirrored, as left and right are. The layout, the line, its thickness, the
-gap and the block name are `BAND_MARKS`, `BAND_PLY`, `BAND_WIDTH`,
-`BAND_GAP`, `BAND_LOCAL` and `BAND_BLOCK`.
+gap, the colour and the block name are `BAND_MARKS`, `BAND_PLY`,
+`BAND_WIDTH`, `BAND_GAP`, `BAND_RGB`, `BAND_LOCAL` and `BAND_BLOCK`.
 
 **The marks follow the piece.** A banded side is carried through exactly the
 turns the bores go through — the quarter turn that puts the long side on X,

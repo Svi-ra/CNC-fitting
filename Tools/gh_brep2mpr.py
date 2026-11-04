@@ -28,6 +28,8 @@ Component setup
     output  NAME   -                        the file name for each program
     output  INFO   -                        one report per part
     output  TABLE  -                        the cut list, one line per piece
+    output  MAP    -                        which input pieces each program
+                                            covers, one branch per program
 
 MPR and NAME are parallel trees: item *i* of a branch is the program, item *i*
 of the same branch in NAME is what to call it. Write MPR out verbatim -- the
@@ -182,7 +184,7 @@ and going clockwise:
     character 4   the right side   highest X
 
 Each banded side becomes a graphic comment, <152 \Grafischer Kommentar\, on
-that edge of every program -- a blue line just outside it, its full length
+that edge of every program -- a red line just outside it, its full length
 -- all of them in one <121 \Block\ the way woodWOP writes them. The marks
 are carried through exactly
 the turns the bores are -- long side to X, turned over, end for end -- so
@@ -253,6 +255,21 @@ a line per name, each with the quantity of the solids that bore it, all
 under the program's one ID. Cantitate is then that name's share, and the
 lines of one ID add up to the total the file name carries; with one name,
 or none, there is one line and Cantitate is that total.
+
+The piece map
+-------------
+MAP says which input solids ended up in which program. It has one branch per
+program, in the order the programs are numbered -- {0} is ID 1 (FIRST_ID),
+{1} is ID 2, and so on -- and each branch holds the input indices of the
+solids that program covers: the first one, the one converted, then the
+copies folded into it, in input order. A piece with no identical copies has
+a branch of one index; one that took in three copies has four.
+
+The index is where the solid sat in B, counted through the whole tree as
+Flatten would lay it out -- branch by branch, item by item, empty items
+included -- so List Item on the flattened B (or on any list running parallel
+to it, like PNAME) picks the solid back out. A piece that failed to convert
+still has its branch, so the branches line up with the cut list's IDs.
 
 File names
 ----------
@@ -438,9 +455,10 @@ SIDE_DIR = {"left": (-1.0, 0.0), "top": (0.0, 1.0),
 BAND_ANGLE_TOL = 1.0
 
 # The marks, as woodWOP draws them in Examples/Banding/
-# 0_330x163-B_1_banding-correct.mpr: a blue line BAND_WIDTH mm thick along
-# each banded edge, BAND_GAP mm outside the panel, in a <121 Block> named as
-# below. The line is the polygon _hline1.ply, carried in the comment itself
+# 0_330x163-B_1_banding-correct.mpr: a line BAND_WIDTH mm thick along each
+# banded edge, BAND_GAP mm outside the panel, in a <121 Block> named as
+# below. The example's line is blue and 10 mm; ours is BAND_RGB and twice
+# that, so it stands out. The line is the polygon _hline1.ply, carried in the comment itself
 # (LOCAL="1", BAND_LOCAL) so woodWOP needs no file for it. It inks only the
 # second half of its 2 x 1 box, which starts at XA/YA -- so BR is twice the
 # edge, and the line runs from the corner the full length of the edge.
@@ -450,7 +468,8 @@ BAND_ANGLE_TOL = 1.0
 # they are written in. The upper edge is not in the examples; it is the
 # lower one mirrored, as left and right are.
 BAND_PLY = "_hline1.ply"
-BAND_WIDTH = 10.0
+BAND_WIDTH = 20.0
+BAND_RGB = (255, 0, 0)    # ROT, GRUEN, BLAU: red
 BAND_GAP = 10.0
 BAND_BLOCK = "Graphischer Kommentar Kante"
 BAND_MARKS = (
@@ -703,7 +722,8 @@ def band_lines(part):
                 'YA="%s"' % band_pos(ya, part.ly),
                 'BR="%s"' % fnum(2 * (part.lx if along == "X" else part.ly)),
                 'HE="0"',
-                'WI="%d"' % angle, 'ROT="0"', 'GRUEN="0"', 'BLAU="255"',
+                'WI="%d"' % angle, 'ROT="%d"' % BAND_RGB[0],
+                'GRUEN="%d"' % BAND_RGB[1], 'BLAU="%d"' % BAND_RGB[2],
                 'STYLE="0"', 'WIDTH="%s"' % fnum(BAND_WIDTH),
                 'WW7TMODE="0"', 'TFONT="OLF ModernOC"', 'TSIZE="24"',
                 'TSTYLE="0"', 'TVSPACE="0"', 'THALIGN="1"', 'TDISTCHAR="0"',
@@ -2518,6 +2538,7 @@ NAME = DataTree[object]()
 INFO = DataTree[object]()
 TABLE = DataTree[object]()
 TABLE.Add(TABLE_SEP.join(TABLE_HEADER), GH_Path(0))
+MAP = DataTree[object]()
 
 ids = SideInput(ID)
 qtys = SideInput(QTY)
@@ -2540,14 +2561,17 @@ elif band_mapping and not band_codes:
              "materials", GH_Path(0))
 taken = {}
 n = 0
+position = 0                        # index in the flattened B, empty items too
 
 # Read the whole input first: identical solids have to be found before any of
 # them is converted, so the shape is only put through the planner once.
 # (path, brep, ident, qty, material, along_grain, explicit, bands,
-#  band_notes, panel name, band materials), in input order
+#  band_notes, panel name, band materials, index in the flattened B),
+#  in input order
 entries = []
 for path, items in branches_of(B):
     for j, brep in enumerate(items):
+        position += 1
         if brep is None:
             continue
         try:
@@ -2622,7 +2646,8 @@ for path, items in branches_of(B):
                               "side first" % grain_why)
 
         entries.append((path, brep, ident, qty, material, along_grain,
-                        explicit, bands, band_notes, panel_name, band_mats))
+                        explicit, bands, band_notes, panel_name, band_mats,
+                        position - 1))
         n += 1
 
 if n and not planes:
@@ -2724,6 +2749,9 @@ for g, members in enumerate(groups):
     if not explicit:
         ident = str(number) + prefix
     idents.append(ident)
+    # MAP: this program's branch, the input indices of every solid it covers.
+    for i in members:
+        MAP.Add(entries[i][11], GH_Path(g))
     try:
         setups = brep_to_setups(brep, entry[7], entry[8], entry[10])
         for mark, part in setups:
