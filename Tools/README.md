@@ -222,8 +222,8 @@ the piece is turned between the two.
 So a piece with Ø8 *and* Ø4.5 holes in its top edge comes out as two programs:
 
 ```
-ND0142_Z_x4_800x400.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
-ND0142_Y_x4_800x400.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
+ND0142_back_x4_800x400.mpr   <103 BohrHoriz> XA=300 YA=400 ZA=9 DU=8   BM="YM"
+ND0142_face_x4_800x400.mpr   <103 BohrHoriz> XA=500 YA=0   ZA=9 DU=4.5 BM="YP"
 ```
 
 The first drills the Ø8 with the piece face up. The second is written for the
@@ -276,8 +276,8 @@ reach in one clamping — but the radius takes the right edge and the
 upper-right corner. So it comes out as two programs instead:
 
 ```
-5_Y_x2_323x78.mpr   turned over about its short axis   7 x BohrHoriz
-5_Z_x2_323x78.mpr   face up, turned end for end        2 x BohrVert
+5_face_x2_323x78.mpr   turned over about its short axis   7 x BohrHoriz
+5_back_x2_323x78.mpr   face up, turned end for end        2 x BohrVert
 ```
 
 `F` drills the edges with the radius at the upper-left; then the piece is
@@ -385,6 +385,15 @@ Set `GROOVE_RK` to `"WRKL"` for the other side, or to `"NoWRK"` to programme
 the centre line instead. The side convention is confirmed only for a run
 towards +X, the direction this saw runs; the +Y case, reachable by setting
 `SAW_ALONG = "XY"`, is derived by rotating that result and is unverified.
+
+**A groove stops at its end points.** `EM` is woodWOP's insert mode, and the
+converter writes `MOD1` (*length*): the whole blade stays between `XA/YA` and
+`XE/YE`, so the cut never runs past either end of the line. `MOD0` (*depth*)
+would reach full depth at the end points and overshoot by the blade's arc.
+This applies to a groove that runs out to one edge as well, so its depth runs
+out just short of that edge. A groove through the whole piece is written
+`MOD2` (*length + safety distance*), which lets the blade run in and out clear
+of both edges. Only the mode is set; the coordinates are the groove's own.
 
 A groove that runs out to an edge **notches the face it was sawn into**, so
 that face's outer loop is no longer the bounding rectangle. That notch
@@ -717,12 +726,11 @@ no materials either.
 ### File names
 
 ```
-<ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr     ND0142_Z_x4_800x400.mpr
+<ID>_<face|back>_x<quantity>_<Lungime>x<Latime>.mpr     ND0142_back_x4_800x400.mpr
 ```
 
-The letter is the side facing the operator: `Z` = the back, the piece face
-up as modelled (the `B` setup `INFO` names); `Y` = the face, turned over
-(`F`). The sizes are the cut list's `Lungime` and `Latime`, the one along the
+The label is the side facing the operator: `back` = the piece face up as
+modelled (the `B` setup `INFO` names); `face` = turned over (`F`). The sizes are the cut list's `Lungime` and `Latime`, the one along the
 grain first, so a file and its cut list line always read the same — a piece
 laid across the grain (`PLN`'s Y axis along the short side) reads `232x480` in both, though its
 program runs 480 along X. Whether a setup is also turned
@@ -744,7 +752,7 @@ out:
 
 ```
 FILE  D:\Orders\2471-MM-fitting.3dm
-NAME  1MM_Z_x1_480x232.mpr, 2MM_Z_x2_591x70.mpr …
+NAME  1MM_back_x1_480x232.mpr, 2MM_back_x2_591x70.mpr …
 TABLE base;1MM;480;232;1;Bottom;…
 ```
 
@@ -845,7 +853,7 @@ Code 128 of the same name below it.
 
 ```
 +--------------------------+
-|     1_Y_x4_600x400       |
+|    1_face_x4_600x400     |
 |                          |
 |     || ||| | || |||      |
 +--------------------------+
@@ -890,8 +898,8 @@ Below 2 dots at 203 dpi a handheld starts to miss, so the component will not
 go thinner: a name too long to fit is still written out, and `INFO` says which
 one and by how many dots it would be clipped. On the default stock that is
 about 20 characters at the 2-dot module — roughly what
-`<ID>_<Y|Z>_x<qty>_<length>x<width>.mpr` comes to, which is why the default is
-70 mm wide.
+`<ID>_<face|back>_x<qty>_<length>x<width>` comes to without the extension,
+which is why the default is 70 mm wide.
 
 ### What can be in a name
 
@@ -978,10 +986,10 @@ row 5…   1   | 490         | 100        | 4     | ABS 22/1 | ABS 22/1 | 1 | �
   them is on `CAT`, its lines still in program order — and `INFO` names the
   categories it put together.
 * **`Nr.` is the program `ID`** — the number the `.mpr` file name starts with,
-  so `7` is `7_Z_x1_480x232.mpr`. It does not count rows: the lines of one
+  so `7` is `7_back_x1_480x232.mpr`. It does not count rows: the lines of one
   program share its number, and a block starts at its first program's
   number. An `ID` wired as text (`106F`), or one with the model suffix
-  (`7MM`, for `7MM_Z_x1_480x232.mpr`), is written as text; a line with no
+  (`7MM`, for `7MM_back_x1_480x232.mpr`), is written as text; a line with no
   `ID` gets an empty `Nr.`.
 * `Lungime`, `Latime` and `cant.` are the cut list's `Lungime`, `Latime` and
   `Cantitate` unchanged; `COMENTARII` is `Denumire`, the panel name. The

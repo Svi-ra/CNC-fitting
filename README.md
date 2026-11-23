@@ -87,7 +87,7 @@ shape that carry different names share a program but keep a cut list line
 each. Programs are numbered from 1, and the cut list's `ID` is the number on
 the file name. Given the model's file name on `FILE`
 (`2471-MM-fitting.3dm`), the numbers carry its model suffix — `1MM`, in the
-file name and the cut list alike: `1MM_Z_x1_480x232.mpr`. A map output
+file name and the cut list alike: `1MM_back_x1_480x232.mpr`. A map output
 lists, per program, which input solids it covers, by their place in the
 input tree.
 

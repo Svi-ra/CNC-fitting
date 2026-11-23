@@ -273,17 +273,17 @@ still has its branch, so the branches line up with the cut list's IDs.
 
 File names
 ----------
-    <ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr
-    1MM_Z_x1_480x232.mpr
+    <ID>_<face|back>_x<quantity>_<Lungime>x<Latime>.mpr
+    1MM_back_x1_480x232.mpr
 
 The sizes are the cut list's Lungime and Latime, the grain-wise one first,
 so a piece laid across the grain (PLN's Y axis along the short side) reads
 232x480 here and there
 even though its program runs 480 along X.
 
-The ID is the number with FILE's model suffix, 1MM -- see below. The letter is the side facing the
-operator, not the tools: `Z` = the back, the piece face up as modelled (the
-B setup); `Y` = the face, turned over (F). The quantity is
+The ID is the number with FILE's model suffix, 1MM -- see below. The label is the side facing the
+operator, not the tools: `back` = the piece face up as modelled (the
+B setup); `face` = turned over (F). The quantity is
 the sum of QTY over the identical solids folded into this program (1 per
 solid if nothing came in on QTY), and is the same on every program of one
 piece. With no ID
@@ -297,7 +297,7 @@ FILE names the model the parts come from, as OrderNumber-ModelPrefix-fitting
 right after every number the component gives out, in the file name and the
 cut list alike:
 
-    1MM_Z_x1_480x232.mpr        1MM in the cut list's ID, and its Nr.
+    1MM_back_x1_480x232.mpr     1MM in the cut list's ID, and its Nr.
 
 A folder or an extension on FILE is dropped first; the order number is not
 used. A name without three parts -- Noptiera-1.dxf -- gives no suffix and a
@@ -814,14 +814,21 @@ class Groove(object):
 
 
 def face_normal(face):
-    """Outward normal of a face, honouring the face's orientation flag.
+    """Outward normal of a face.
+
+    BrepFace.NormalAt already honours the face's orientation flag -- it is
+    the face's normal, not its underlying surface's -- so it is used as it
+    is. Reversing it again for OrientationIsReversed points every reversed
+    face into the material: a groove floor sawn from the underside then
+    reads as one sawn from the top, and the groove lands in the other
+    setup from the bores beside it (checked in Rhino 8: on a reversed floor
+    BrepFace.NormalAt gives the outward -Z, the surface +Z).
 
     Only ever called on planar faces, where the normal is the same everywhere,
     so evaluating at the middle of the domain is safe even when the face is
     trimmed.
     """
-    n = p3(face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid))
-    return vmul(n, -1.0) if face.OrientationIsReversed else n
+    return p3(face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid))
 
 
 def loop_points(face, count=SAMPLES):
@@ -1395,14 +1402,18 @@ def macro(feat, dia, lz):
 
     if feat["t"] == "groove":
         # Parameters and their order follow woodWOP's own export of this
-        # macro; TV="0" leaves the scoring pass off, and MOD2 lets the blade
-        # run in and out clear of a groove that reaches both edges.
+        # macro; TV="0" leaves the scoring pass off. EM is the insert mode:
+        # MOD1 ("length") keeps the whole blade between the start and end
+        # points, so the cut never runs past either end of the line -- MOD0
+        # ("depth") would reach full depth there and overshoot by the blade's
+        # arc. MOD2 lets the blade run in and out clear of a groove that
+        # reaches both edges.
         return (109, "Nuten", [
             ("XA", fnum(feat["xa"])), ("YA", fnum(feat["ya"])), ("WI", "0"),
             ("XE", fnum(feat["xe"])), ("YE", fnum(feat["ye"])),
             ("NB", fnum(dia)),
             ("RK", GROOVE_RK),
-            ("EM", "MOD2" if feat["full"] else "MOD0"),
+            ("EM", "MOD2" if feat["full"] else "MOD1"),
             ("AD", "0"),
             ("TI", fnum(feat["ti"])),
             ("TV", "0"), ("VT", "0"), ("MV", "GL"),
@@ -2312,13 +2323,13 @@ def name_rows(members):
     return list(rows.items())
 
 
-# The letter a file name gives the side facing the operator: Y the face,
-# Z the back -- F and B as the setups call them.
-FACING_MARK = {"F": "Y", "B": "Z"}
+# The label a file name gives the side facing the operator: face or back
+# -- F and B as the setups call them.
+FACING_MARK = {"F": "face", "B": "back"}
 
 
 def file_name(ident, part, mark, qty, along_grain):
-    """<ID>_<Y|Z>_x<quantity>_<Lungime>x<Latime>.mpr
+    """<ID>_<face|back>_x<quantity>_<Lungime>x<Latime>.mpr
 
     The sizes are the cut list's, grain-wise first -- see grain_size -- not
     the program's X and Y, so a file and its cut list line read the same.

@@ -9,6 +9,51 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.22.0] — 2026-11-23
+
+File names that say `face` and `back`, grooves that stay inside their line,
+and an underside groove that stays with its bores.
+
+### Changed
+
+- **`gh_brep2mpr.py`: file names say `face` and `back`** instead of `Y` and
+  `Z`: `<ID>_<face|back>_x<quantity>_<Lungime>x<Latime>.mpr`, so
+  `1MM_back_x1_480x232.mpr` (was `1MM_Z_…`). `back` is still the piece face
+  up as modelled, the `B` setup; `face` is turned over, `F`. Only the label
+  changed. Anything downstream that matches on `_Z_`/`_Y_` must follow.
+- **`gh_brep2mpr.py`: a groove now stops at its end points.** `<109 \Nuten\`
+  is written with `EM="MOD1"` (woodWOP's insert mode *length*) instead of
+  `MOD0` (*depth*). `MOD0` reached full depth at `XA/YA` and `XE/YE`, so the
+  blade's arc ran past both ends of the line. `MOD1` keeps the whole blade
+  between them. That includes the end of a groove that runs out to an edge,
+  which therefore no longer reaches full depth right at the edge. A groove
+  through the whole piece keeps `MOD2` (*length + safety distance*). Only
+  the mode changed; the coordinates are the same.
+
+### Fixed
+
+- **A groove and the bores beside it no longer split into two programs.**
+  `face_normal` in [gh_brep2mpr.py](Tools/gh_brep2mpr.py) and
+  `gh_brep2holes.py` reversed the normal for
+  `OrientationIsReversed`, but `BrepFace.NormalAt` already honours that
+  flag — so every reversed face came out pointing into the material. Bores
+  are classified by their Z extent and were right; a groove floor is
+  classified by its normal, so a groove in the underside of a reversed-face
+  solid read as one in the top and landed in the B program while its bores
+  went to F (`8A_back` with the groove, `8A_face` with the bores, for a lid
+  that has both on one face). The normal is now used as `NormalAt` gives it.
+  The outline's top/bottom face pick, which also reads the normal's sign, is
+  fixed with it.
+
+### Tested
+
+- In Rhino 8, a 1011×530×18 panel with a 4 mm groove and six Ø8 bores all in
+  its underside, made by Boolean difference (groove floor reversed): before,
+  two programs (B: groove, F: bores); after, one (F: groove and bores).
+  `gh_brep2holes.py` was changed the same way but not re-run.
+- In woodWOP, the `EM="MOD1"` grooves of the Comoda 03 model
+  stop inside their line, as intended.
+
 ## [0.21.0] — 2026-11-04
 
 A map from programs back to the input solids, and banding marks that stand
