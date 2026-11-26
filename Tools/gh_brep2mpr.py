@@ -423,7 +423,7 @@ GROOVE_RK = "WRKR"
 # When the two ends want different modes the line is cut in half and each
 # half is sawn in the mode of its own end. The edge is the panel's bounding
 # rectangle: a shaped outline is not looked at.
-SAW_DIA = 125.0           # grooving saw blade diameter, mm -- CHECK IT
+SAW_DIA = 104.0           # grooving saw blade diameter, mm
 EM_DEPTH = "MOD0"
 EM_LENGTH = "MOD1"
 

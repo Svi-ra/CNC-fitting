@@ -9,6 +9,14 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.25.1] — 2026-11-26
+
+### Changed
+
+- **`gh_brep2mpr.py`: `SAW_DIA` is 104 mm**, the real blade, no longer the
+  125 mm placeholder. An end of a groove closer than 52 mm to the edge or an
+  opening is now sawn Length.
+
 ## [0.25.0] — 2026-11-26
 
 Grooves choose Depth or Length per end, from how far each end is from the

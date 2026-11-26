@@ -429,7 +429,7 @@ another groove).
 | further away than that | Depth |
 
 ```python
-SAW_DIA = 125.0           # grooving saw blade diameter, mm -- not yet confirmed
+SAW_DIA = 104.0           # grooving saw blade diameter, mm
 EM_DEPTH = "MOD0"
 EM_LENGTH = "MOD1"
 ```
@@ -445,7 +445,8 @@ edge) comes out as
 ```
 
 The edge is the panel's bounding rectangle; the notches of a shaped outline
-are not looked at. `SAW_DIA` is a placeholder until the real blade is known.
+are not looked at. The blade is Ø104, so the line between Length and Depth is
+52 mm.
 
 A groove that runs out to an edge **notches the face it was sawn into**, so
 that face's outer loop is no longer the bounding rectangle. That notch
