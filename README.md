@@ -63,8 +63,9 @@ component reads cylinders straight off the Brep faces.
 It also knows what the machine is fitted with — which diameters the vertical
 array carries, which bit sits on each side for horizontal bores, and how the
 grooving saw runs. Sawn grooves are read off the solid alongside the bores,
-and big round or rectangular openings become router pockets,
-`<112 \Tasche\`. A
+big round or rectangular openings become router pockets,
+`<112 \Tasche\`, and a shaped outline is routed through, both with the
+Ø20 router, tool 1. A
 part that cannot all be reached in one clamping comes out as two programs, one
 face up and one for the piece turned over, named `-B` and `-F` for the side
 the operator sees — with the face up under the head, that is the back.
@@ -76,8 +77,7 @@ turned end for end as well as over, and of the placements that reach the
 bores, the one that keeps a cut corner, rebate or pocket away from where the
 gripper takes hold wins — even at the cost of a second setup. A groove within
 50 mm of the lower edge, where the gripper holds, is sawn with the piece the
-other way round, so that it sits near the top edge instead. A shaped outline
-is not milled, so the piece must arrive cut to shape.
+other way round, so that it sits near the top edge instead.
 
 Panels of the same shape are converted once however many times they appear:
 the quantities are added up and the file is named for the total. Material comes

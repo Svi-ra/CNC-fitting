@@ -56,10 +56,12 @@ the Rhino document is never consulted, so its units are not checked either.
         any other angle               -> <104 \BohrUniv\
     - a flat rectangular cavity floor between the two faces becomes a sawn
       groove, <109 \Nuten\
-    - an outline that is not the bounding rectangle is NOT milled: the
-      machine has no router, so the piece must arrive cut to shape, and INFO
-      says so. CONTOUR = True writes it as a contour ]1 plus
-      <105 \Konturfraesen\
+    - a big round or rectangular opening clear of the edges becomes a
+      router pocket, <112 \Tasche\
+    - an outline that is not the bounding rectangle is routed through: a
+      contour ]1 plus <105 \Konturfraesen\, with the router
+      (ROUTER_TOOL, ROUTER_DIA mm) outside it. CONTOUR = False leaves it
+      out, and the piece must arrive cut to shape
 
 What the machine can actually reach
 -----------------------------------
@@ -333,10 +335,9 @@ PUNCH_DEPTH = 0.0   # dead-end vertical bores shallower than this, mm, are
                     # is drilled BM_VERT to its depth. 1.0 once it has it.
 THICKNESS = None    # force a thickness in mm, or None to measure it
 LONG_X = True       # turn the part so its long side runs along X
-CONTOUR = False     # mill the outline when it is not a rectangle: ]1 plus
-                    # <105 Konturfraesen>. Off: the machine has no router,
-                    # and woodWOP flags the milling as an error. The piece
-                    # then has to arrive already cut to shape.
+CONTOUR = True      # mill the outline when it is not a rectangle: ]1 plus
+                    # <105 Konturfraesen> with the router (ROUTER_TOOL).
+                    # Off: the piece has to arrive already cut to shape.
 SAMPLES = 96        # points sampled per face loop
 EXT = ".mpr"        # appended to every NAME ("" for a bare name)
 FIRST_ID = 1        # the number of the first program, when ID is unwired
@@ -409,6 +410,23 @@ GROOVE_MIN_Y = 50.0
 # programming the centre line.
 GROOVE_RK = "WRKR"
 
+# The router: one bit, tool number ROUTER_TOOL in woodWOP's tool list, used
+# for the outline (<105 \Konturfraesen\) and for pockets (<112 \Tasche\).
+# Its diameter is what an opening has to be wider than to be milled at all,
+# and half of it is the radius it leaves in every inside corner -- INFO says
+# where that rounds off a corner the model has sharper.
+ROUTER_TOOL = "1"         # T_ / TNO: the router's tool number
+ROUTER_DIA = 20.0         # mm, the bit's diameter
+
+# The outline is routed right through, from the top face, with the bit kept
+# outside the part: the contour is walked counter-clockwise, so RK="WRKR"
+# puts the tool on the waste side. ZA is written as the panel thickness plus
+# CONTOUR_OVERCUT. No woodWOP export of a routed outline has been checked
+# yet -- open the first one in woodWOP and confirm the depth it shows.
+CONTOUR_RK = "WRKR"       # tool on the right of a counter-clockwise outline
+CONTOUR_OVERCUT = 0.0     # mm past the underside
+CONTOUR_FEED = "STANDARD" # F_: feed, m/min, or "STANDARD"
+
 # Pockets: big openings milled with the router, <112 \Tasche\. Checked
 # against woodWOP 9.0.152 exports -- Examples/Pocket circle.mpr and
 # Examples/Pocket rectangle.mpr: XA/YA is the centre, FO="1" a round pocket
@@ -430,9 +448,10 @@ GROOVE_RK = "WRKR"
 # way up.
 
 POCKET = True             # convert big openings into pockets at all
-POCKET_MIN = 20.0         # mm: round over this across, rectangles whose
-                          # short side is over this, are pockets
-POCKET_TOOL = "104"       # T_: the router the pocket is cut with
+POCKET_MIN = ROUTER_DIA   # mm: round over this across, rectangles whose
+                          # short side is over this, are pockets -- no
+                          # narrower than the bit, or it does not fit
+POCKET_TOOL = ROUTER_TOOL # T_: the router the pocket is cut with
 POCKET_FEED = "5"         # F_: feed, m/min, or "STANDARD"
 POCKET_XY = "80"          # XY: step-over, % of the tool diameter
 
@@ -654,6 +673,7 @@ class Part(object):
         self.bands = []             # banded edges in this setup, BAND_MARKS keys
         self.band_mats = {}         # their materials: {edge: material}
         self.notes = []
+        self.tight = (0, [])        # outline corners the router rounds off
 
 
 def mpr_lines(part):
@@ -700,16 +720,16 @@ def mpr_lines(part):
         a("<105 \\Konturfraesen\\")
         a('EA="1:0"')
         a('MDA="TAN"')
-        a('RK="NoWRK"')
+        a('RK="%s"' % CONTOUR_RK)
         a('EE="1:%d"' % (len(part.contour) - 1))
         a('MDE="TAN_AB"')
         a('EM="0"')
         a('RI="1"')
-        a('TNO=""')
+        a('TNO="%s"' % ROUTER_TOOL)
         a('S_="STANDARD"')
-        a('F_="0"')
-        a('AB=""')
-        a('ZA="@0"')
+        a('F_="%s"' % CONTOUR_FEED)
+        a('AB="0"')
+        a('ZA="%s"' % fnum(part.lz + CONTOUR_OVERCUT))
         a('STUFEN="0"')
         a('ZSTART="0"')
         a('ANZZST="1"')
@@ -1496,10 +1516,13 @@ def find_pockets(planars, inner, lx, ly, lz, notes):
                           x1 - x0, y1 - y0, rd, (0.0, 0.0, 1.0), thru=True))
 
     for p in out:
-        if p.rd < GEO_TOL:
-            notes.append("%s x %s mm pocket at X=%s has sharp corners - the "
-                         "router leaves its own radius in them"
-                         % (fnum(p.w), fnum(p.h), fnum(p.centre[0])))
+        if p.rd < 0.5 * ROUTER_DIA - GEO_TOL:
+            notes.append("%s x %s mm pocket at X=%s has %s corners - the "
+                         "%s mm router leaves R%s in them"
+                         % (fnum(p.w), fnum(p.h), fnum(p.centre[0]),
+                            "sharp" if p.rd < GEO_TOL
+                            else "R%s" % fnum(p.rd),
+                            fnum(ROUTER_DIA), fnum(0.5 * ROUTER_DIA)))
     return out
 
 
@@ -1782,6 +1805,35 @@ def is_rectangle(segs, lx, ly):
                        (round(lx, 2), round(ly, 2)), (0.0, round(ly, 2))}
 
 
+def _tangent(s, at_end):
+    """Unit direction of travel along a segment, at its start or its end."""
+    if not s.radius:
+        return vnorm(vsub(s.p1, s.p0))
+    p = s.p1 if at_end else s.p0
+    r = vsub(p, s.centre)
+    ccw = arc_ds(s.p0, s.p1, s.centre, s.mid) in (0, 2)
+    return vnorm((-r[1], r[0], 0.0) if ccw else (r[1], -r[0], 0.0))
+
+
+def router_corners(segs):
+    """Inside corners of a counter-clockwise outline the router rounds off.
+
+    -> (sharp, radii): how many corners turn inwards with no radius at all,
+    and the radii of the inward arcs tighter than the bit's own. The router
+    leaves ROUTER_DIA / 2 in both.
+    """
+    sharp = 0
+    for i, s in enumerate(segs):
+        a = _tangent(s, True)
+        b = _tangent(segs[(i + 1) % len(segs)], False)
+        if a[0] * b[1] - a[1] * b[0] < -0.02:      # turns right, > ~1 deg
+            sharp += 1
+    radii = [s.radius for s in segs
+             if s.radius and s.radius < 0.5 * ROUTER_DIA - GEO_TOL
+             and arc_ds(s.p0, s.p1, s.centre, s.mid) in (1, 3)]
+    return sharp, radii
+
+
 def outline(planars, part):
     """Contour elements for the panel outline, when it is not the rectangle.
 
@@ -1812,6 +1864,7 @@ def outline(planars, part):
         # Turning the part over mirrors the outline. Walk it the other way so
         # the contour stays counter-clockwise and RI="1" keeps its meaning.
         best = [s.reversed_() for s in reversed(best)]
+    part.tight = router_corners(best)
 
     elems = [("KP", [("X", cnum(best[0].p0[0])), ("Y", cnum(best[0].p0[1])),
                      ("Z", "0"), ("KO", "0")])]
@@ -2459,6 +2512,23 @@ def brep_to_setups(brep, bands=None, notes=None, mats=None):
                              "arrive already cut to shape")
             elif shape:
                 part.contour = shape
+                sharp, radii = part.tight
+                if sharp or radii:
+                    bits = []
+                    if sharp:
+                        bits.append("%d sharp inside corner%s"
+                                    % (sharp, "" if sharp == 1 else "s"))
+                    if radii:
+                        bits.append("inside radi%s %s"
+                                    % ("us" if len(radii) == 1 else "i",
+                                       ", ".join("R" + fnum(r)
+                                                 for r in sorted(set(
+                                                     round(r, 3)
+                                                     for r in radii)))))
+                    notes.append("the outline has %s - the %s mm router "
+                                 "leaves R%s there"
+                                 % (" and ".join(bits), fnum(ROUTER_DIA),
+                                    fnum(0.5 * ROUTER_DIA)))
             if part.contour and len(planned) > 1:
                 notes.append("the outline is cut in the first setup only - "
                              "check the piece is still held well enough for "

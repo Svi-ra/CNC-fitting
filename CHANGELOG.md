@@ -9,6 +9,47 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.24.0] — 2026-11-26
+
+The machine now has a router: one Ø20 bit, tool 1, for pockets and shaped
+outlines.
+
+### Added
+
+- **`gh_brep2mpr.py`: `ROUTER_TOOL` (`"1"`) and `ROUTER_DIA` (20 mm).** One
+  place for the router bit. Pockets and the outline both name it, and its
+  diameter sets what can be milled: `POCKET_MIN` now follows `ROUTER_DIA`,
+  so an opening has to be wider than the bit to become a pocket.
+- **INFO notes the corners the bit rounds off.** It leaves R10 in every
+  inside corner. A pocket with sharp corners or a corner radius under R10 is
+  noted, and so is a routed outline with sharp inside corners or inward arcs
+  tighter than R10: "the outline has 1 sharp inside corner - the 20 mm
+  router leaves R10 there". Outside corners are not counted.
+- `CONTOUR_RK` (`"WRKR"`), `CONTOUR_OVERCUT` (0) and `CONTOUR_FEED`
+  (`STANDARD`) for the outline cut.
+
+### Changed
+
+- **Shaped outlines are routed.** `CONTOUR` is on by default. The
+  `<105 \Konturfraesen\` block now names `TNO="1"`. It used to name no tool,
+  which woodWOP flags as an error. The tool runs on the waste side of the
+  counter-clockwise outline (`RK="WRKR"`, was `NoWRK`, which put the tool on
+  the line), right through (`ZA` = thickness + `CONTOUR_OVERCUT`, was `@0`),
+  with `F_="STANDARD"` (was `0`) and `AB="0"`.
+- **Pockets are cut with tool 1**, `T_="1"`, no longer `104`.
+
+### Tested
+
+- With Rhino and Grasshopper stubbed out: an L-shaped 600 × 300 outline gives
+  one sharp inside corner whichever way it is walked; an R5 inside fillet is
+  listed, an R30 outer round corner is not. The `<105>` block comes out with
+  `TNO="1"`, `RK="WRKR"`, `ZA="18"`. A pocket with R0 or R6 corners is noted,
+  R10 and R15 are not, and a pocket's `T_` is `1`. The INFO texts format.
+- Not run in Grasshopper or on the machine. **`ZA` is unverified**: no woodWOP
+  export of a routed outline was available. If woodWOP reads `ZA` as a
+  height above the underside, `ZA="18"` puts the bit at the top face and it
+  cuts air. Open the first routed program in woodWOP and check it.
+
 ## [0.23.0] — 2026-11-26
 
 Pockets for the router, grooves kept off the gripped edge, and two more

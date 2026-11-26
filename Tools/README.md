@@ -187,8 +187,9 @@ Two constraints follow from it:
 * the gripper holds the **lower edge**, so a groove less than `GROOVE_MIN_Y`
   (50 mm) from it is sawn with the piece turned the other way round — see
   [Grooves](#grooves);
-* the router cuts pockets from the top face only, like the vertical array —
-  see [Pockets](#pockets).
+* the router is **one Ø20 bit, tool 1**, working from the top face only,
+  like the vertical array. It cuts pockets and routes shaped outlines — see
+  [Pockets](#pockets) and [Shaped outlines](#shaped-outlines-are-routed).
 
 The piece always lies with its long side on X, but **four ways round**:
 
@@ -448,46 +449,68 @@ woodWOP 9.0.152 writes it, after `Examples/Pocket circle.mpr` and
 `Examples/Pocket rectangle.mpr`:
 
 ```
-<112 \Tasche\   XA="300"  YA="200"  FO="0"  LA="55"  BR="55"  RD="20"  TI="18"  T_="104"
+<112 \Tasche\   XA="300"  YA="200"  FO="0"  LA="55"  BR="55"  RD="20"  TI="18"  T_="1"
 ```
 
 ```python
+ROUTER_TOOL = "1"         # T_ / TNO: the router's tool number
+ROUTER_DIA = 20.0         # mm, the bit's diameter
+
 POCKET = True             # convert big openings into pockets at all
-POCKET_MIN = 20.0         # mm: round over this across, rectangles whose
+POCKET_MIN = ROUTER_DIA   # mm: round over this across, rectangles whose
                           # short side is over this, are pockets
-POCKET_TOOL = "104"       # T_: the router the pocket is cut with
+POCKET_TOOL = ROUTER_TOOL # T_: the router the pocket is cut with
 POCKET_FEED = "5"         # F_: feed, m/min, or "STANDARD"
 POCKET_XY = "80"          # XY: step-over, % of the tool diameter
 ```
 
 Like a bore, a pocket is cut from the top face only, so one in the underside
 needs the piece turned over. A through pocket can be cut either way up.
-`INFO` notes a pocket with sharp corners, where the router leaves its own
-radius. A narrower rectangle is still a groove for the saw, and so is a slot
+An opening has to be wider than the bit to be milled at all, so
+`POCKET_MIN` follows `ROUTER_DIA`. The bit leaves `ROUTER_DIA / 2` (R10) in
+every inside corner: `INFO` notes a pocket whose corners are sharper than
+that. A narrower rectangle is still a groove for the saw, and so is a slot
 that runs out to an edge, however wide. For the grip, a pocket counts as
 material lost.
 
-Pockets need a router at `POCKET_TOOL`. Where the machine has none (see
-below), set `POCKET = False`. Big round openings are then left as geometry
-and reported, as before, and flat cavities go back to the groove rules.
+`POCKET = False` switches pockets off. Big round openings are then left as
+geometry and reported, and flat cavities go back to the groove rules.
 
 A cylinder patch that is not a whole circle is never a bore. A rounded
 pocket corner, a round outer corner of the part and the end of a slot are
 all passed over: a run of patches must sweep at least 270° round its axis.
 
-### Shaped outlines are not milled
+### Shaped outlines are routed
 
-The machine has no router, so **an outline that is not the bounding rectangle
-is not milled**: no contour `]1`, no `<105 \Konturfraesen\`. woodWOP flags
-that block as an error — it names no tool, and there is none to name. The
-piece has to arrive already cut to shape, and `INFO` says so. Its shape still
-counts for [Holding the piece](#holding-the-piece), which is measured on the
-solid.
+**An outline that is not the bounding rectangle is routed right through**
+with the router: a contour `]1` and `<105 \Konturfraesen\` naming
+`TNO="1"`. The contour is walked counter-clockwise and `RK="WRKR"` keeps
+the bit on the waste side of it, outside the part. `ZA` is written as the
+panel thickness plus `CONTOUR_OVERCUT` (0), and the feed is `STANDARD`, from
+woodWOP's tool data:
 
-`CONTOUR = True` writes the contour and its milling again, in the first setup
-only — repeating it would cut air — with an `INFO` note when a second setup
-follows, since a piece cut free in the first may no longer be held for the
-second.
+```
+<105 \Konturfraesen\   EA="1:0"  RK="WRKR"  EE="1:6"  RI="1"  TNO="1"  F_="STANDARD"  AB="0"  ZA="18"
+```
+
+```python
+CONTOUR = True            # route a shaped outline at all
+CONTOUR_RK = "WRKR"       # tool on the right of a counter-clockwise outline
+CONTOUR_OVERCUT = 0.0     # mm past the underside
+CONTOUR_FEED = "STANDARD" # F_: feed, m/min, or "STANDARD"
+```
+
+The Ø20 bit cannot follow an inside corner tighter than R10. `INFO` counts
+the sharp inside corners and lists the inside radii under R10 — "the outline
+has 1 sharp inside corner - the 20 mm router leaves R10 there". Outside
+corners and arcs are cut as modelled.
+
+The outline is cut in the first setup only — repeating it would cut air —
+with an `INFO` note when a second setup follows, since a piece cut free in
+the first may no longer be held for the second. Its shape counts for
+[Holding the piece](#holding-the-piece) either way, which is measured on the
+solid. `CONTOUR = False` leaves the outline out, and the piece has to arrive
+already cut to shape; `INFO` says so.
 
 ### Identical panels
 
@@ -869,8 +892,8 @@ because turning it would contradict the layout the definition produced.
 Beyond that it takes raw solids with no attached data and recognises the rest:
 the world bounding box gives the panel size, cylindrical faces become
 drillings classified by which face they break out through, and the outline,
-when it is not simply the bounding rectangle, is reported and used to place
-the piece for the gripper — not milled.
+when it is not simply the bounding rectangle, is routed through and used to
+place the piece for the gripper.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
@@ -884,10 +907,13 @@ the piece for the gripper — not milled.
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
 | `GROOVE_MIN_Y` | 50.0 | turn the piece so no groove lies closer than this to the lower edge, where the gripper holds; 0 = off |
 | `POCKET` | on | mill big openings as `<112 Tasche>` — see [Pockets](#pockets) |
-| `POCKET_TOOL` | `"104"` | the router the pockets are cut with |
+| `ROUTER_TOOL` | `"1"` | the router's tool number, for pockets and outlines |
+| `ROUTER_DIA` | 20.0 | the router bit's diameter: the narrowest opening it mills, and twice the radius it leaves in inside corners |
+| `POCKET_TOOL` | `ROUTER_TOOL` | the router the pockets are cut with |
 | `MERGE_IDENTICAL` | on | convert one solid per shape and add the quantities up; off converts every solid separately |
 | `DUP_TOL` | 0.01 | how far two solids may differ and still count as the same shape |
-| `CONTOUR` | off | mill a shaped outline (`]1` + `<105 Konturfraesen>`); off while the machine has no router |
+| `CONTOUR` | on | route a shaped outline through (`]1` + `<105 Konturfraesen>`) — see [Shaped outlines](#shaped-outlines-are-routed) |
+| `CONTOUR_OVERCUT` | 0.0 | how far past the underside the outline is routed, mm |
 | `GRIP` | on | place each setup so the gripping zones stay solid — see [Holding the piece](#holding-the-piece) |
 | `BM_THRU` | `"LSL"` | drill mode for through bores, written without `TI` |
 | `BAND_SIDES` | bottom, left, top, right | which side of the plane each character of a `BAND` pattern names — see [Edge banding](#edge-banding) |
@@ -1294,8 +1320,14 @@ not read or save local files.
   of the shop's existing programs, and `check_mpr.py` passes on all 82 of them
   as well as on everything this tool generates — but the first converted
   program should still be opened in woodWOP and dry-run before it cuts.
-* **The two-setup split covers drilling, grooving and pockets.** Contour milling is
-  off and, when switched on, not checked against the machine. Each program
+* **The routed outline's depth has not been checked in woodWOP.** No woodWOP
+  export of a routed outline was available, so `ZA` = the thickness is read
+  off the format spec alone. It is chosen to fail safe: read the other way
+  (Z up from the underside), it puts the bit at the top face and cuts air.
+  Open the first routed program in woodWOP and confirm it shows a through
+  cut, or export one as a reference.
+* **The two-setup split covers drilling, grooving and pockets.** The outline
+  is routed in the first setup and is not planned for reach. Each program
   assumes the operator lays the piece the way `INFO` names — turned over
   about the long or the short axis, or end for end — and re-references it to
   the same zero corner.
