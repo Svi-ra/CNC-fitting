@@ -421,7 +421,10 @@ GROOVE_RK = "WRKR"
 #     the overrun does not break out into it
 #   - an end further away than that                         -> Depth
 # When the two ends want different modes the line is cut in half and each
-# half is sawn in the mode of its own end. The edge is the panel's bounding
+# half is sawn in the mode of its own end; the Length half carries on past
+# the split by SAW_DIA / 2 (no further than the groove's other end), so its
+# run-out arc lies under the Depth half and the floor has no ridge where the
+# two meet. The edge is the panel's bounding
 # rectangle: a shaped outline is not looked at.
 SAW_DIA = 104.0           # grooving saw blade diameter, mm
 EM_DEPTH = "MOD0"
@@ -1706,17 +1709,29 @@ def groove_runs(feat, openings, lx, ly, notes):
     k = "xa" if feat["dirn"] == "X" else "ya"
     e = "xe" if feat["dirn"] == "X" else "ye"
     mid = 0.5 * (feat[k] + feat[e])
+    # The Length half runs on past the split by the saw's radius, so the arc
+    # it leaves in the floor lies under the Depth half's full-depth floor and
+    # the depth stays even where the two meet -- no ridge at the split. It
+    # stops at the groove's far end if the other half is shorter than that.
+    over = min(0.5 * SAW_DIA, 0.5 * feat["run"])
     first, second = dict(feat), dict(feat)
     first[e], first["em"], first["run"] = mid, ma, 0.5 * feat["run"]
     second[k], second["em"], second["run"] = mid, mb, 0.5 * feat["run"]
+    longer = first if ma == EM_LENGTH else second
+    if longer is first:
+        first[e] = mid + over
+    else:
+        second[k] = mid - over
+    longer["run"] += over
     notes.append(
         "%s mm groove at %s=%s split in half at %s=%s - its ends are %s and "
         "%s mm from the edge or an opening (saw radius %s mm), so one half is "
-        "sawn Depth and the other Length"
+        "sawn Depth and the other Length, the Length half carried %s mm past "
+        "the split"
         % (fnum(feat["nb"]), "Y" if feat["dirn"] == "X" else "X",
            fnum(feat["ya"] if feat["dirn"] == "X" else feat["xa"]),
            feat["dirn"], fnum(mid), fnum(ga), fnum(gb),
-           fnum(0.5 * SAW_DIA)))
+           fnum(0.5 * SAW_DIA), fnum(over)))
     return [first, second]
 
 

@@ -9,6 +9,17 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.25.2] — 2026-11-26
+
+### Changed
+
+- **`gh_brep2mpr.py`: the Length half of a split groove overlaps the Depth
+  half by the saw radius.** It runs on past the split point by
+  `SAW_DIA / 2` (52 mm), no further than the groove's far end, so the arc
+  it leaves sits under the Depth half's full-depth floor and the groove
+  keeps one depth where the two operations meet, with no ridge at the
+  split. `INFO` notes how far the Length half was carried.
+
 ## [0.25.1] — 2026-11-26
 
 ### Changed

@@ -435,13 +435,16 @@ EM_LENGTH = "MOD1"
 ```
 
 When the two ends want different modes, the line is **cut in half** and each
-half is sawn in the mode of its own end, with a note in `INFO`. On a 600 mm
-panel, a groove from X 0 to X 570 (open at one end, 30 mm short of the other
-edge) comes out as
+half is sawn in the mode of its own end, with a note in `INFO`. The Length
+half **carries on past the split by `SAW_DIA / 2`**, so the arc it leaves in
+the floor lies under the Depth half's full-depth floor: the depth stays even
+where the two meet, with no ridge at the split. It stops at the groove's far
+end when the Depth half is shorter than that. On a 600 mm panel, a groove from
+X 0 to X 570 (open at one end, 30 mm short of the other edge) comes out as
 
 ```
 <109 \Nuten\   XA="0"    XE="285"  EM="MOD0"
-<109 \Nuten\   XA="285"  XE="570"  EM="MOD1"
+<109 \Nuten\   XA="233"  XE="570"  EM="MOD1"
 ```
 
 The edge is the panel's bounding rectangle; the notches of a shaped outline
