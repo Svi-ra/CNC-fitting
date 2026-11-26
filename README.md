@@ -62,7 +62,9 @@ component reads cylinders straight off the Brep faces.
 
 It also knows what the machine is fitted with — which diameters the vertical
 array carries, which bit sits on each side for horizontal bores, and how the
-grooving saw runs. Sawn grooves are read off the solid alongside the bores. A
+grooving saw runs. Sawn grooves are read off the solid alongside the bores,
+and big round or rectangular openings become router pockets,
+`<112 \Tasche\`. A
 part that cannot all be reached in one clamping comes out as two programs, one
 face up and one for the piece turned over, named `-B` and `-F` for the side
 the operator sees — with the face up under the head, that is the back.
@@ -72,9 +74,10 @@ written.
 It also places each piece so the machine can **hold** it. Each setup may be
 turned end for end as well as over, and of the placements that reach the
 bores, the one that keeps a cut corner, rebate or pocket away from where the
-gripper takes hold wins — even at the cost of a second setup. It writes
-boring and sawing only: a shaped outline is not milled, since the machine has
-no router, so the piece must arrive cut to shape.
+gripper takes hold wins — even at the cost of a second setup. A groove within
+50 mm of the lower edge, where the gripper holds, is sawn with the piece the
+other way round, so that it sits near the top edge instead. A shaped outline
+is not milled, so the piece must arrive cut to shape.
 
 Panels of the same shape are converted once however many times they appear:
 the quantities are added up and the file is named for the total. Material comes
@@ -118,6 +121,10 @@ sheet with one cell per edge, or as a workbook per material. On the desktop,
 sheet from a saved `.json`. See
 [Tools/README.md](Tools/README.md#excel-cut-list).
 
+Two small components round it out: `Tools/gh_brep2holes.py` returns the
+outline of every cut in a solid as curves, with their depths, and
+`Tools/gh_takebycount.py` reads one list as counts over another.
+
 ## Documentation
 
 | File | Contents |
@@ -134,9 +141,10 @@ reports no findings on the 82 shop programs in
 output is structurally identical to those files.
 
 **Not yet proven on a machine.** Open a converted program in woodWOP and dry
-run it before it cuts. Known limits — pockets and grooves modelled as solid
-cavities are not converted, and feeds/speeds/tools stay at woodWOP defaults —
-are listed in [Tools/README.md](Tools/README.md).
+run it before it cuts. Known limits — `dxf2mpr.py` does not convert grooves
+or pockets (only the Grasshopper component does), and most feeds, speeds and
+tools stay at woodWOP defaults — are listed in
+[Tools/README.md](Tools/README.md).
 
 ## Note on the reference documents
 

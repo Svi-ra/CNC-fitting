@@ -1,0 +1,355 @@
+[H
+
+VERSION="4.0 Alpha"
+
+INCH="0"
+
+OP="0"
+
+FM="1"
+
+FW="700"
+
+VIEW="NOMIRROR"
+
+_BSX=968.000000
+
+_BSY=250.000000
+
+_BSZ=18.000000
+
+ 
+
+<100 \WerkStck\
+
+LA="968"
+
+BR="250"
+
+DI="18"
+
+FNX="0"
+
+FNY="0"
+
+AX="0"
+
+AY="0"
+
+ 
+
+<121 \Block\
+
+XP="0.0"
+
+YP="0.0"
+
+ZP="0.0"
+
+AX="1"
+
+AY="1"
+
+RX="0.0"
+
+RY="0.0"
+
+CS="0"
+
+OC="0"
+
+KAT="BlockMakro"
+
+MNM="BlockMakro"
+
+ORI="1"
+
+NM="Graphischer Kommentar Kante"
+
+DP="4"
+
+KO="00"
+
+ 
+
+<152 \Grafischer Kommentar\
+
+NM="_hline1.ply"
+
+LOCAL="1"
+
+MD="0"
+
+XA="0"
+
+YA="-10"
+
+BR="1936"
+
+HE="0"
+
+WI="0"
+
+ROT="255"
+
+GRUEN="0"
+
+BLAU="0"
+
+STYLE="0"
+
+WIDTH="20"
+
+WW7TMODE="0"
+
+TFONT="OLF ModernOC"
+
+TSIZE="24"
+
+TSTYLE="0"
+
+TVSPACE="0"
+
+THALIGN="1"
+
+TDISTCHAR="0"
+
+KAT="Grafischer Kommentar"
+
+MNM="Banding lower"
+
+ORI="2"
+
+STARTLOCAL
+
+SIZE X2.0000 Y1.0000
+
+SPINDLE X0.0000 Y0.0000
+
+U
+
+X0.0000 Y0.5000 
+
+X1.0000 Y0.5000 
+
+D
+
+X2.0000 Y0.5000 
+
+ENDLOCAL
+
+KO="00"
+
+ 
+
+<152 \Grafischer Kommentar\
+
+NM="_hline1.ply"
+
+LOCAL="1"
+
+MD="0"
+
+XA="-10"
+
+YA="0"
+
+BR="500"
+
+HE="0"
+
+WI="90"
+
+ROT="255"
+
+GRUEN="0"
+
+BLAU="0"
+
+STYLE="0"
+
+WIDTH="20"
+
+WW7TMODE="0"
+
+TFONT="OLF ModernOC"
+
+TSIZE="24"
+
+TSTYLE="0"
+
+TVSPACE="0"
+
+THALIGN="1"
+
+TDISTCHAR="0"
+
+KAT="Grafischer Kommentar"
+
+MNM="Banding left"
+
+ORI="3"
+
+STARTLOCAL
+
+SIZE X2.0000 Y1.0000
+
+SPINDLE X0.0000 Y0.0000
+
+U
+
+X0.0000 Y0.5000 
+
+X1.0000 Y0.5000 
+
+D
+
+X2.0000 Y0.5000 
+
+ENDLOCAL
+
+KO="00"
+
+ 
+
+<152 \Grafischer Kommentar\
+
+NM="_hline1.ply"
+
+LOCAL="1"
+
+MD="0"
+
+XA="0"
+
+YA="250+10"
+
+BR="1936"
+
+HE="0"
+
+WI="0"
+
+ROT="255"
+
+GRUEN="0"
+
+BLAU="0"
+
+STYLE="0"
+
+WIDTH="20"
+
+WW7TMODE="0"
+
+TFONT="OLF ModernOC"
+
+TSIZE="24"
+
+TSTYLE="0"
+
+TVSPACE="0"
+
+THALIGN="1"
+
+TDISTCHAR="0"
+
+KAT="Grafischer Kommentar"
+
+MNM="Banding upper"
+
+ORI="4"
+
+STARTLOCAL
+
+SIZE X2.0000 Y1.0000
+
+SPINDLE X0.0000 Y0.0000
+
+U
+
+X0.0000 Y0.5000 
+
+X1.0000 Y0.5000 
+
+D
+
+X2.0000 Y0.5000 
+
+ENDLOCAL
+
+KO="00"
+
+ 
+
+<152 \Grafischer Kommentar\
+
+NM="_hline1.ply"
+
+LOCAL="1"
+
+MD="0"
+
+XA="968+10"
+
+YA="0"
+
+BR="500"
+
+HE="0"
+
+WI="90"
+
+ROT="255"
+
+GRUEN="0"
+
+BLAU="0"
+
+STYLE="0"
+
+WIDTH="20"
+
+WW7TMODE="0"
+
+TFONT="OLF ModernOC"
+
+TSIZE="24"
+
+TSTYLE="0"
+
+TVSPACE="0"
+
+THALIGN="1"
+
+TDISTCHAR="0"
+
+KAT="Grafischer Kommentar"
+
+MNM="Banding right"
+
+ORI="5"
+
+STARTLOCAL
+
+SIZE X2.0000 Y1.0000
+
+SPINDLE X0.0000 Y0.0000
+
+U
+
+X0.0000 Y0.5000 
+
+X1.0000 Y0.5000 
+
+D
+
+X2.0000 Y0.5000 
+
+ENDLOCAL
+
+KO="00"
+
+!
+
+

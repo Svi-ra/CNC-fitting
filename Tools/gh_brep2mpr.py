@@ -74,7 +74,10 @@ out as more than one program (see MACHINE below):
     - the grooving saw runs **along X only** and its blade is 4 mm thick, so
       a groove running across the part, or narrower than the blade, cannot be
       cut. <109 \Nuten\ saws from the top face, so a groove in the underside
-      needs the piece turned over just as an underside bore does.
+      needs the piece turned over just as an underside bore does;
+    - the gripper holds the **lower edge**, so a groove less than
+      GROOVE_MIN_Y (50 mm) from it is sawn with the piece turned the other
+      way round, where it sits as far from the top edge instead.
 
 The piece always lies with its long side on X, but four ways round: face up
 (B) or **turned over about the X axis** (F), and either of them **turned end
@@ -320,6 +323,7 @@ from Grasshopper.Kernel.Data import GH_Path
 
 SNAP = 0.0          # round drill diameters to this step (0 = leave exact)
 MAX_DIA = 60.0      # larger round openings are not treated as drillings
+                    # (a vertical one is a pocket instead, see POCKET)
 BM_VERT = "LS"      # woodWOP's "Slow-fast to depth", for dead-end bores
 BM_THRU = "LSL"     # woodWOP's "Slow-fast-slow through", for through bores
 BM_PUNCH = "CP"     # woodWOP 9's "Center punch" mode, for marking holes
@@ -382,6 +386,17 @@ SAW_KERF = 4.0            # blade thickness, mm
 SAW_ALONG = "X"           # directions the saw can run: "X", "Y" or "XY"
 GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 
+# The gripper holds the piece along its lower edge (Y = 0), so a groove too
+# close to it is better sawn with the piece the other way round. A groove
+# along X whose near side is less than GROOVE_MIN_Y from Y = 0 is placed,
+# where the plan allows it, with the piece turned end for end (or turned
+# over the other way) -- which brings it the same distance from the top edge
+# instead. No extra axis is needed: those turns already swap the top and
+# lower edges. This ranks after reaching every bore and before the grip; if
+# no plan keeps a groove clear, it is cut where it is and INFO says so.
+# 0 switches it off.
+GROOVE_MIN_Y = 50.0
+
 # woodWOP does not program a groove down its middle: XA/YA..XE/YE is one
 # EDGE of the groove and RK offsets the blade a full NB to one side. Checked
 # against a woodWOP 9.0.152 export of a known part --
@@ -393,6 +408,33 @@ GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 # rotated equivalents apply to a run towards +Y. Set "NoWRK" to go back to
 # programming the centre line.
 GROOVE_RK = "WRKR"
+
+# Pockets: big openings milled with the router, <112 \Tasche\. Checked
+# against woodWOP 9.0.152 exports -- Examples/Pocket circle.mpr and
+# Examples/Pocket rectangle.mpr: XA/YA is the centre, FO="1" a round pocket
+# with RD its radius (LA = BR = 0), FO="0" a rectangle LA x BR with RD the
+# corner radius, TI the depth from the face it is cut from -- the panel
+# thickness for one that goes right through.
+#
+#   - a round opening along Z over POCKET_MIN across is a round pocket --
+#     unless the vertical array carries a bit of that size (35 mm hinge
+#     cups stay bores);
+#   - a rectangular opening, sharp or round cornered, whose short side is
+#     over POCKET_MIN and that runs out to no edge of the part, is a
+#     rectangular pocket -- a dead-end one read off its floor, a through
+#     one off the hole it leaves in both faces. Narrower ones are still
+#     grooves for the saw.
+#
+# Like a bore, a pocket is cut from the top face only, so one in the
+# underside needs the piece turned over; a through pocket can be cut either
+# way up.
+
+POCKET = True             # convert big openings into pockets at all
+POCKET_MIN = 20.0         # mm: round over this across, rectangles whose
+                          # short side is over this, are pockets
+POCKET_TOOL = "104"       # T_: the router the pocket is cut with
+POCKET_FEED = "5"         # F_: feed, m/min, or "STANDARD"
+POCKET_XY = "80"          # XY: step-over, % of the tool diameter
 
 # ---------------------------------------------------------------------------
 # the gripper
@@ -813,6 +855,57 @@ class Groove(object):
                       vec(self.normal))
 
 
+class Pocket(object):
+    """A rectangular pocket: centre, size along X and Y, corner radius.
+
+    `z` is the floor height -- None for one that goes right through --
+    and `normal` which way the floor looks, so which face it was cut from.
+    """
+
+    def __init__(self, centre, w, h, rd, normal, thru=False):
+        self.centre = centre
+        self.w = w
+        self.h = h
+        self.rd = rd
+        self.normal = normal
+        self.thru = thru
+
+    def moved(self, pt, vec):
+        """A copy in another setup frame. The setup maps turn by 180 deg
+        only, so the size along X and Y is kept as it is."""
+        return Pocket(pt(self.centre), self.w, self.h, self.rd,
+                      vec(self.normal), self.thru)
+
+
+def rect_shape(segs):
+    """(x0, y0, x1, y1, corner radius) if the loop is a rectangle square to
+    X and Y -- sharp cornered, or with the same arc on all four corners --
+    else None."""
+    lines = [s for s in segs if not s.radius]
+    arcs = [s for s in segs if s.radius]
+    if len(lines) != 4 or len(arcs) not in (0, 4):
+        return None
+    pts = [p for s in segs for p in (s.p0, s.p1)]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    if x1 - x0 < GEO_TOL or y1 - y0 < GEO_TOL:
+        return None
+    for s in lines:
+        on_x = (abs(s.p0[0] - s.p1[0]) <= GEO_TOL
+                and min(abs(s.p0[0] - x0), abs(s.p0[0] - x1)) <= GEO_TOL)
+        on_y = (abs(s.p0[1] - s.p1[1]) <= GEO_TOL
+                and min(abs(s.p0[1] - y0), abs(s.p0[1] - y1)) <= GEO_TOL)
+        if not (on_x or on_y):
+            return None
+    rd = 0.0
+    if arcs:
+        rd = arcs[0].radius
+        if any(abs(a.radius - rd) > 0.01 for a in arcs):
+            return None
+    return x0, y0, x1, y1, rd
+
+
 def face_normal(face):
     """Outward normal of a face.
 
@@ -845,9 +938,10 @@ def loop_points(face, count=SAMPLES):
     return pts
 
 
-def loop_segments(face, notes):
-    """Outer loop of a face as line / arc segments, in curve order."""
-    crv = face.OuterLoop.To3dCurve()
+def loop_segments(face, notes, loop=None):
+    """Outer loop of a face -- or `loop` -- as line / arc segments, in curve
+    order."""
+    crv = (loop or face.OuterLoop).To3dCurve()
     if crv is None:
         return []
     parts = crv.DuplicateSegments()
@@ -885,6 +979,7 @@ def read_brep(brep, notes):
 
     cylinders = []
     planars = []
+    inner = []
     for face in brep.Faces:
         ok, cyl = face.UnderlyingSurface().TryGetCylinder(TOL)
         if ok:
@@ -895,20 +990,55 @@ def read_brep(brep, notes):
             centre = p3(cyl.Center)
             base = vsub(centre, vmul(axis, vdot(centre, axis)))
             ts = [vdot(p, axis) for p in pts]
-            cylinders.append((axis, base, cyl.Radius, min(ts), max(ts)))
+            cylinders.append((axis, base, cyl.Radius, min(ts), max(ts),
+                              _sweep(pts, axis, base)))
             continue
         ok, _pl = face.TryGetPlane(TOL)
         if ok:
-            planars.append((face_normal(face), loop_segments(face, notes)))
+            normal = face_normal(face)
+            planars.append((normal, loop_segments(face, notes)))
+            # The holes a face has in it: a through cut-out shows as one
+            # in both faces -- see find_pockets.
+            for loop in face.Loops:
+                if loop.LoopType == Rhino.Geometry.BrepLoopType.Inner:
+                    inner.append((normal, loop_segments(face, notes, loop)))
 
     holes = []
-    for axis, base, radius, tmin, tmax in _merge(cylinders):
+    for axis, base, radius, tmin, tmax, sweep in _merge(cylinders):
         if tmax - tmin < 0.05:
+            continue
+        if sweep < 0.75 * TWO_PI:
+            # Not a whole circle: a rounded corner of a pocket, a round
+            # outer corner of the part, the end of a slot. None is a bore.
+            # The margin is wide on purpose: the sweep is measured between
+            # sampled points, and on a small deep bore they lie far apart.
             continue
         holes.append(Hole(vadd(base, vmul(axis, tmin)),
                           vadd(base, vmul(axis, tmax)), 2.0 * radius))
 
-    return corners, holes, planars
+    return corners, holes, planars, inner
+
+
+def _sweep(pts, axis, base):
+    """How far round its axis a cylinder patch goes, radians (up to 2 pi)."""
+    ref = (1.0, 0.0, 0.0) if abs(axis[0]) < 0.9 else (0.0, 1.0, 0.0)
+    u = vnorm(vsub(ref, vmul(axis, vdot(ref, axis))))
+    v = (axis[1] * u[2] - axis[2] * u[1],
+         axis[2] * u[0] - axis[0] * u[2],
+         axis[0] * u[1] - axis[1] * u[0])
+    angles = []
+    for p in pts:
+        d = vsub(p, base)
+        d = vsub(d, vmul(axis, vdot(d, axis)))
+        if vlen(d) < 1e-9:
+            continue
+        angles.append(math.atan2(vdot(d, v), vdot(d, u)))
+    if len(angles) < 2:
+        return 0.0
+    angles.sort()
+    gaps = [b - a for a, b in zip(angles, angles[1:])]
+    gaps.append(angles[0] + TWO_PI - angles[-1])
+    return TWO_PI - max(gaps)
 
 
 def _merge(cylinders):
@@ -919,22 +1049,26 @@ def _merge(cylinders):
     faces -- stay two holes rather than joining into one through the part.
     """
     groups = {}
-    for axis, base, radius, tmin, tmax in cylinders:
+    for cyl in cylinders:
+        axis, base, radius = cyl[:3]
         key = (tuple(round(c, 3) for c in axis),
                tuple(round(c, 3) for c in base),
                round(radius, 3))
-        groups.setdefault(key, []).append((axis, base, radius, tmin, tmax))
+        groups.setdefault(key, []).append(cyl)
 
+    # The sweep of a run is the patches' sweeps added up, so the two halves
+    # of a bore split along its length make a whole circle between them.
     merged = []
     for patches in groups.values():
         patches.sort(key=lambda c: c[3])
         run = list(patches[0])
-        for axis, base, radius, tmin, tmax in patches[1:]:
+        for axis, base, radius, tmin, tmax, sweep in patches[1:]:
             if tmin <= run[4] + GEO_TOL:
                 run[4] = max(run[4], tmax)
+                run[5] += sweep
             else:
                 merged.append(tuple(run))
-                run = [axis, base, radius, tmin, tmax]
+                run = [axis, base, radius, tmin, tmax, sweep]
         merged.append(tuple(run))
     return merged
 
@@ -965,7 +1099,7 @@ def _apply(fn, corners, holes, planars):
     return corners
 
 
-def place(corners, holes, planars, notes):
+def place(corners, holes, planars, notes, inner=None):
     """Long side along X, part sitting on the zero point, face up as modelled.
 
     Which face ends up on top, and which end of the piece is where -- and so
@@ -976,11 +1110,14 @@ def place(corners, holes, planars, notes):
     world, where the Brep itself still sits, and whether the part was given
     the quarter turn rot_z90 -- directions such as a banded side's follow it.
     """
+    if inner is None:
+        inner = []
     turned = False
     if LONG_X:
         x0, y0, _z0, x1, y1, _z1 = _bbox(corners, holes)
         if (x1 - x0) < (y1 - y0) - GEO_TOL:
             corners = _apply(rot_z90, corners, holes, planars)
+            _apply(rot_z90, [], [], inner)
             turned = True
             notes.append("turned 90 deg so the long side runs along X - the "
                          "top and lower edges follow the turn")
@@ -989,6 +1126,7 @@ def place(corners, holes, planars, notes):
     if abs(x0) > GEO_TOL or abs(y0) > GEO_TOL or abs(z0) > GEO_TOL:
         corners = _apply(lambda p: vsub(p, (x0, y0, z0)),
                          corners, holes, planars)
+        _apply(lambda p: vsub(p, (x0, y0, z0)), [], [], inner)
     else:
         x0 = y0 = z0 = 0.0
 
@@ -1145,8 +1283,8 @@ def grip_for(brep, to_world, lx, ly, thick, holes, notes):
 
     Drilled bores do not count against a zone: a dowel hole near a corner
     does not stop the gripper holding the panel, and it must not cost the
-    piece a setup. Round openings over MAX_DIA are left counting -- a big
-    radius on a corner is read as one, and it does take material away.
+    piece a setup. Pockets are left counting -- they do take material
+    away -- and so are round openings over MAX_DIA.
     """
     if not GRIP:
         return None
@@ -1156,7 +1294,7 @@ def grip_for(brep, to_world, lx, ly, thick, holes, notes):
         return None
     tol = max(TOL, 0.01)
     levels = [thick * f for f in (0.5, 0.1, 0.9)]
-    bores = [h for h in holes if h.dia <= MAX_DIA]
+    bores = [h for h in holes if is_drilling(h)]
 
     def solid(x, y):
         for z in levels:
@@ -1201,6 +1339,12 @@ def feature(hole, lx, ly, lz):
             return {"t": "none",
                     "why": "closed internal bore at X=%s - it reaches neither "
                            "face" % fnum(p0[0])}
+        if is_round_pocket(hole.dia, top and bot):
+            thru = top and bot
+            return {"t": "pocket", "fo": 1, "x": p0[0], "y": p0[1],
+                    "la": 0.0, "br": 0.0, "rd": 0.5 * hole.dia,
+                    "up": top, "thru": thru,
+                    "ti": lz if thru else zhi - zlo}
         return {"t": "vert", "x": p0[0], "y": p0[1],
                 "zlo": zlo, "zhi": zhi, "top": top, "bot": bot,
                 "thru": top and bot}
@@ -1232,14 +1376,153 @@ def feature(hole, lx, ly, lz):
             "len": vlen(vsub(p1, p0))}
 
 
-def find_grooves(planars, lz, notes):
+def is_round_pocket(dia, thru):
+    """Is a round opening along Z this wide one for the router?
+
+    Over POCKET_MIN, and no bit of that size in the vertical array -- a
+    35 mm hinge cup stays a bore.
+    """
+    if not POCKET or dia <= POCKET_MIN + GEO_TOL:
+        return False
+    return nominal(dia, MACHINE["vert_thru" if thru else "vert_blind"]) is None
+
+
+def is_drilling(hole):
+    """Is this bore drilled, rather than milled as a pocket or left alone?"""
+    if hole.dia > MAX_DIA:
+        return False
+    ax = hole.axis()
+    if abs(abs(ax[2]) - 1.0) < 1e-3 and POCKET and hole.dia > POCKET_MIN:
+        return (nominal(hole.dia, MACHINE["vert_blind"]) is not None
+                or nominal(hole.dia, MACHINE["vert_thru"]) is not None)
+    return True
+
+
+def pocket_feature(pk, lz):
+    """What this rectangular pocket is, in the setup frame it is handed in."""
+    up = pk.thru or pk.normal[2] > 0
+    if pk.thru:
+        ti = lz
+    else:
+        z = pk.centre[2]
+        ti = (lz - z) if pk.normal[2] > 0 else z
+    return {"t": "pocket", "fo": 0, "x": pk.centre[0], "y": pk.centre[1],
+            "la": pk.w, "br": pk.h, "rd": pk.rd,
+            "up": up, "thru": pk.thru, "ti": ti}
+
+
+def is_pocket(shape, lx, ly):
+    """Is this rectangle (rect_shape) one for the router?
+
+    Over POCKET_MIN on its short side, and clear of every edge of the part:
+    a slot that runs out to an edge is the saw's, however wide.
+    """
+    if not POCKET or shape is None:
+        return False
+    x0, y0, x1, y1, _rd = shape
+    if min(x1 - x0, y1 - y0) <= POCKET_MIN + GEO_TOL:
+        return False
+    return (x0 > FACE_TOL and y0 > FACE_TOL
+            and x1 < lx - FACE_TOL and y1 < ly - FACE_TOL)
+
+
+def find_pockets(planars, inner, lx, ly, lz, notes):
+    """Rectangular pockets read off the solid -- see POCKET.
+
+    A dead-end one by its floor: a flat face between the two faces of the
+    part, a rectangle (rect_shape) that is_pocket takes. A through one by
+    the hole it leaves: an inner loop of the top face with the same
+    rectangle in the bottom face. Round ones are bores grown big, and come
+    from the cylinders instead -- see feature.
+    """
+    out = []
+    if not POCKET:
+        return out
+    for normal, segs in planars:
+        if abs(abs(normal[2]) - 1.0) > 1e-3 or not segs:
+            continue
+        z = segs[0].p0[2]
+        if z <= FACE_TOL or z >= lz - FACE_TOL:
+            continue
+        if not all(abs(p[2] - z) <= GEO_TOL
+                   for sg in segs for p in (sg.p0, sg.p1)):
+            continue
+        shape = rect_shape(segs)
+        if not is_pocket(shape, lx, ly):
+            continue
+        x0, y0, x1, y1, rd = shape
+        out.append(Pocket((0.5 * (x0 + x1), 0.5 * (y0 + y1), z),
+                          x1 - x0, y1 - y0, rd, normal))
+
+    def side(up):
+        found = []
+        for normal, segs in inner:
+            if not segs or abs(abs(normal[2]) - 1.0) > 1e-3:
+                continue
+            if (normal[2] > 0) != up:
+                continue
+            z = segs[0].p0[2]
+            if abs(z - (lz if up else 0.0)) > 0.5:
+                continue
+            if all(sg.radius for sg in segs):
+                continue                # a round hole: a cylinder says it
+            found.append(segs)
+        return found
+
+    def key(shape):
+        return tuple(round(c, 2) for c in shape[:4])
+
+    below = set()
+    for segs in side(False):
+        shape = rect_shape(segs)
+        if shape is not None:
+            below.add(key(shape))
+    for segs in side(True):
+        shape = rect_shape(segs)
+        if shape is None or key(shape) not in below:
+            if shape is None and _through(segs, side(False)):
+                notes.append("through cut-out at X=%s is not a rectangle "
+                             "- not converted" % fnum(segs[0].p0[0]))
+            continue                    # dead-end: its floor says it
+        if not is_pocket(shape, lx, ly):
+            if min(shape[2] - shape[0], shape[3] - shape[1]) > POCKET_MIN:
+                notes.append("through cut-out %s x %s mm at X=%s runs out to "
+                             "an edge - not converted"
+                             % (fnum(shape[2] - shape[0]),
+                                fnum(shape[3] - shape[1]), fnum(shape[0])))
+            continue
+        x0, y0, x1, y1, rd = shape
+        out.append(Pocket((0.5 * (x0 + x1), 0.5 * (y0 + y1), lz),
+                          x1 - x0, y1 - y0, rd, (0.0, 0.0, 1.0), thru=True))
+
+    for p in out:
+        if p.rd < GEO_TOL:
+            notes.append("%s x %s mm pocket at X=%s has sharp corners - the "
+                         "router leaves its own radius in them"
+                         % (fnum(p.w), fnum(p.h), fnum(p.centre[0])))
+    return out
+
+
+def _through(segs, others):
+    """Does a loop of the same extent sit in the other face?"""
+    def box(sg):
+        xs = [p[0] for s in sg for p in (s.p0, s.p1)]
+        ys = [p[1] for s in sg for p in (s.p0, s.p1)]
+        return (round(min(xs), 1), round(min(ys), 1),
+                round(max(xs), 1), round(max(ys), 1))
+    mine = box(segs)
+    return any(box(o) == mine for o in others)
+
+
+def find_grooves(planars, lz, notes, lx=None, ly=None):
     """Slots read off the solid: a flat rectangular floor between the faces.
 
     A face whose normal is +/-Z and whose height is neither 0 nor the panel
     thickness is the bottom of something cut into the part. If it is a plain
-    axis-aligned rectangle of straight edges it is a sawn slot; anything else
-    -- a round-ended pocket, a free-form cavity, a floor split over several
-    faces -- is reported and left alone, as pockets always have been.
+    axis-aligned rectangle of straight edges it is a sawn slot; one that
+    is_pocket takes is find_pockets' business; anything else -- a
+    round-ended slot, a free-form cavity, a floor split over several faces
+    -- is reported and left alone.
     """
     out = []
     for normal, segs in planars:
@@ -1251,6 +1534,9 @@ def find_grooves(planars, lz, notes):
 
         if len(segs) < 3 or all(sg.radius for sg in segs):
             continue                    # the flat bottom of a blind bore
+
+        if lx is not None and is_pocket(rect_shape(segs), lx, ly):
+            continue                    # milled as a pocket
 
         flat = all(abs(p[2] - z) <= GEO_TOL
                    for sg in segs for p in (sg.p0, sg.p1))
@@ -1308,11 +1594,21 @@ def groove_feature(g, lx, ly, lz):
 
     return {"t": "groove", "up": up, "dirn": dirn, "nb": nb, "run": run,
             "ti": (lz - z) if up else z, "full": full,
-            "xa": xa, "ya": ya, "xe": xe, "ye": ye}
+            "xa": xa, "ya": ya, "xe": xe, "ye": ye,
+            "low": (GROOVE_MIN_Y > 0 and dirn == "X"
+                    and g.lo[1] < GROOVE_MIN_Y - GEO_TOL),
+            "ylo": g.lo[1]}
 
 
 def diameters(key):
     return ", ".join(fnum(d) for d in MACHINE[key])
+
+
+def pocket_size(feat):
+    """"60 mm round", "120 x 80 mm" -- a pocket's size, for INFO."""
+    if feat["fo"] == 1:
+        return "%s mm round" % fnum(2.0 * feat["rd"])
+    return "%s x %s mm" % (fnum(feat["la"]), fnum(feat["br"]))
 
 
 def reachable(feat, dia):
@@ -1354,6 +1650,13 @@ def reachable(feat, dia):
                 "top face only, so the piece has to be turned over"
                 % fnum(nb))
         return True, nb, None
+
+    if feat["t"] == "pocket":
+        if not feat["up"]:
+            return False, dia, (
+                "%s pocket in the underside - the router works from above "
+                "only, so the piece has to be turned over" % pocket_size(feat))
+        return True, dia, None
 
     if feat["t"] == "horiz":
         bm = feat["bm"]
@@ -1420,6 +1723,32 @@ def macro(feat, dia, lz):
             ("XY", "80"), ("MN", "GL"), ("BL", "0"),
             ("OP", "0"), ("AN", "0"),
             ("S_", "STANDARD"), ("F_", "STANDARD")])
+
+    if feat["t"] == "pocket":
+        # Laid out as woodWOP 9.0.152 writes it -- Examples/Pocket circle.mpr
+        # and Examples/Pocket rectangle.mpr -- with only the size, the place,
+        # the depth and the tool filled in.
+        round_ = feat["fo"] == 1
+        return (112, "Tasche", [
+            ("RPX", "1"), ("RPY", "1"),
+            ("XA", fnum(feat["x"])), ("YA", fnum(feat["y"])),
+            ("FO", "1" if round_ else "0"),
+            ("LA", "0.0" if round_ else fnum(feat["la"])),
+            ("BR", "0.0" if round_ else fnum(feat["br"])),
+            ("RD", fnum(feat["rd"])),
+            ("WI", "0"), ("TI", fnum(feat["ti"])), ("ZT", "0"),
+            ("UXY", "1"), ("XY", POCKET_XY),
+            ("T_", POCKET_TOOL), ("F_", POCKET_FEED),
+            ("DS", "1"), ("OSZI", "0"), ("BL", "0"), ("OSZVS", "0"),
+            ("SM", "0"), ("S_", "STANDARD"), ("UZU", "1"), ("ZU", "0"),
+            ("BM", "0"), ("DHR", "80"), ("LZR", "80"), ("WZHR", "30"),
+            ("SZHR", "5"), ("ABS", "0"), ("HP", "0"), ("SP", "0"),
+            ("YVE", "0"), ("WW", "1,2,3,401,402,403"), ("ASG", "2"),
+            ("HP_A_O", "STANDARD"), ("KG", "0"), ("RP", "STANDARD"),
+            ("KAT", "Tasche"), ("MNM", "Trimming Pocket Vertical"),
+            ("MX", "0"), ("MY", "0"), ("MZ", "0"),
+            ("MXF", "1"), ("MYF", "1"), ("MZF", "1"),
+            ("SYA", "0"), ("SYV", "0"), ("KO", "00")])
 
     if feat["t"] == "univ":
         e = feat["entry"]
@@ -1875,6 +2204,9 @@ def _choose(tried, grip):
     that hold the piece equally well do fewer setups win, and after that the
     order of PLANS, which keeps the face up when nothing else decides.
 
+    Between reach and grip sits GROOVE_MIN_Y: of the plans that reach as
+    many, those that saw the fewest grooves near the lower edge go on.
+
     Of two setups, the one that holds better goes first: it is where the
     piece is worked hardest -- and where the outline is cut, if CONTOUR is
     on.
@@ -1883,8 +2215,14 @@ def _choose(tried, grip):
         return sum(1 for _k, _i, _s, opts, _w in tried
                    if not any(o in opts for o in p))
 
-    least = min(missed(p) for p in PLANS)
-    able = [p for p in PLANS if missed(p) == least]
+    def low(p):
+        # Grooves this plan can only saw near the lower edge: GROOVE_MIN_Y.
+        return sum(1 for _k, _i, _s, opts, _w in tried
+                   if any(o in opts for o in p)
+                   and all(opts[o][0].get("low") for o in p if o in opts))
+
+    least = min((missed(p), low(p)) for p in PLANS)
+    able = [p for p in PLANS if (missed(p), low(p)) == least]
     best = min(able, key=lambda p: _grip_key(p, grip))  # first of equals
     if (len(best) == 2 and grip is not None
             and grip.score(best[1]) > grip.score(best[0])):
@@ -1892,7 +2230,7 @@ def _choose(tried, grip):
     return best, able
 
 
-def plan(holes, grooves, lx, ly, lz, notes, grip=None):
+def plan(holes, grooves, lx, ly, lz, notes, grip=None, pockets=()):
     """Split the drilling over the setups that reach it and hold the piece.
 
     Every bore is tried in each of the four ways the piece can lie: face up
@@ -1910,23 +2248,32 @@ def plan(holes, grooves, lx, ly, lz, notes, grip=None):
     Grooves go through the same mill: the saw cuts from the top face only,
     so a slot in the underside needs the piece turned over exactly as an
     underside bore does, and rides along with that setup when there is one.
+    A groove near the lower edge steers the piece end for end, or turned over
+    the other way, to bring it up to the top edge: see GROOVE_MIN_Y.
+
+    Pockets too: the router works from above, like the vertical array, so
+    a pocket in the underside wants the piece turned over; a through one can
+    be cut either way up.
 
     Returns [(orient, [(feature, size), ...]), ...], first setup first, where
-    orient is (mark, turned) and size is the nominal diameter of a bore or
-    the width of a groove.
+    orient is (mark, turned) and size is the nominal diameter of a bore, the
+    width of a groove, or the size of a pocket.
     """
     jobs = []
     for hole in holes:
         dia = hole.dia
         if SNAP > 0:
             dia = round(dia / SNAP) * SNAP
-        if dia > MAX_DIA:
+        vertical = abs(abs(hole.axis()[2]) - 1.0) < 1e-3
+        if dia > MAX_DIA and not (POCKET and vertical):
             notes.append("round opening %s mm left as geometry, not drilled "
                          "(over MAX_DIA)" % fnum(dia))
             continue
         jobs.append(("hole", Hole(hole.p0, hole.p1, dia), dia))
     for groove in grooves:
         jobs.append(("groove", groove, 0.0))
+    for pocket in pockets:
+        jobs.append(("pocket", pocket, 0.0))
 
     tried = []
     for kind, item, size in jobs:
@@ -1937,6 +2284,9 @@ def plan(holes, grooves, lx, ly, lz, notes, grip=None):
             if kind == "hole":
                 feat = feature(item.moved(pt), lx, ly, lz)
                 want = size
+            elif kind == "pocket":
+                feat = pocket_feature(item.moved(pt, vec), lz)
+                want = 0.0
             else:
                 feat = groove_feature(item.moved(pt, vec), lx, ly, lz)
                 want = feat.get("nb", 0.0)
@@ -1953,8 +2303,20 @@ def plan(holes, grooves, lx, ly, lz, notes, grip=None):
     for kind, item, size, opts, why in tried:
         here = [o for o in needed if o in opts]
         if here:
+            # A groove goes to the setup that keeps it off the lower edge.
+            here.sort(key=lambda o: bool(opts[o][0].get("low")))
             feat, nom = opts[here[0]]
             work[here[0]].append((feat, nom))
+            if feat.get("low"):
+                clear = [o for o in ORIENTS if o in opts
+                         and not opts[o][0].get("low")]
+                notes.append(
+                    "%s mm groove sawn %s mm from the lower edge - under "
+                    "GROOVE_MIN_Y (%s mm), %s"
+                    % (fnum(nom), fnum(feat["ylo"]), fnum(GROOVE_MIN_Y),
+                       "but no plan that reaches everything else keeps it "
+                       "clear too" if clear else
+                       "and no way round keeps it clear of both edges"))
             if kind == "hole" and abs(nom - size) > 0.001:
                 notes.append("%s mm bore taken as the %s mm bit"
                              % (fnum(size), fnum(nom)))
@@ -1971,11 +2333,15 @@ def plan(holes, grooves, lx, ly, lz, notes, grip=None):
                                else " - WRITTEN ANYWAY (STRICT is off)"))
         if not STRICT:
             pt, vec = setup_maps(needed[0][0], lx, ly, lz, needed[0][1])
-            feat = (feature(item.moved(pt), lx, ly, lz) if kind == "hole"
-                    else groove_feature(item.moved(pt, vec), lx, ly, lz))
+            if kind == "hole":
+                feat = feature(item.moved(pt), lx, ly, lz)
+            elif kind == "pocket":
+                feat = pocket_feature(item.moved(pt, vec), lz)
+            else:
+                feat = groove_feature(item.moved(pt, vec), lx, ly, lz)
             if feat["t"] != "none":
                 work[needed[0]].append(
-                    (feat, size if kind == "hole" else feat["nb"]))
+                    (feat, feat["nb"] if kind == "groove" else size))
 
     if len(needed) > 1:
         notes.append("two setups: %s first, %s; then the piece is %s for %s"
@@ -2047,8 +2413,8 @@ def brep_to_setups(brep, bands=None, notes=None, mats=None):
     if brep is None or not brep.IsValid:
         raise ValueError("invalid Brep")
 
-    corners, holes, planars = read_brep(brep, notes)
-    corners, to_world, quarter = place(corners, holes, planars, notes)
+    corners, holes, planars, inner = read_brep(brep, notes)
+    corners, to_world, quarter = place(corners, holes, planars, notes, inner)
 
     x0, y0, z0, x1, y1, z1 = _bbox(corners, holes)
     lx, ly = x1 - x0, y1 - y0
@@ -2058,12 +2424,13 @@ def brep_to_setups(brep, bands=None, notes=None, mats=None):
                          % (fnum(lx), fnum(ly), fnum(lz)))
     check_flat(lx, ly, lz, notes)
 
-    grooves = find_grooves(planars, lz, notes) if GROOVE else []
+    grooves = find_grooves(planars, lz, notes, lx, ly) if GROOVE else []
+    pockets = find_pockets(planars, inner, lx, ly, lz, notes)
     # Measured on the solid as it is, so the real thickness, not THICKNESS.
     grip = grip_for(brep, to_world, lx, ly, z1 - z0, holes, notes)
 
     out = []
-    planned = plan(holes, grooves, lx, ly, lz, notes, grip)
+    planned = plan(holes, grooves, lx, ly, lz, notes, grip, pockets)
     for i, ((mark, turned), work) in enumerate(planned):
         part = Part()
         part.lx, part.ly, part.lz = lx, ly, lz

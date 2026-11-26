@@ -183,7 +183,12 @@ Two constraints follow from it:
 * the horizontal spindles carry a **different bit on each side** — the top
   edge drills Ø8 only, the lower edge Ø4.5 only, left and right do both;
 * the grooving saw runs **along X only** with a 4 mm blade, and saws from the
-  top face — see [Grooves](#grooves) below.
+  top face — see [Grooves](#grooves) below;
+* the gripper holds the **lower edge**, so a groove less than `GROOVE_MIN_Y`
+  (50 mm) from it is sawn with the piece turned the other way round — see
+  [Grooves](#grooves);
+* the router cuts pockets from the top face only, like the vertical array —
+  see [Pockets](#pockets).
 
 The piece always lies with its long side on X, but **four ways round**:
 
@@ -212,7 +217,8 @@ ways, and **at most two setups** are used — one face up, one turned over:
   reported.
 
 Which plan wins is decided in this order: **reach every bore** the machine can
-reach at all; then **hold the piece best** (see
+reach at all; then **keep grooves off the lower edge** (`GROOVE_MIN_Y`, see
+[Grooves](#grooves)); then **hold the piece best** (see
 [Holding the piece](#holding-the-piece)); only then **the fewest setups**; and
 face up, as modelled, when nothing else decides. A piece with only Ø4.5 holes
 in its top edge therefore needs no flip: turned end for end they sit in the
@@ -345,15 +351,17 @@ A groove is read off the solid as a **flat rectangular cavity floor lying
 between the two faces** — a planar face whose normal is along Z at a height
 that is neither 0 nor the panel thickness, with four straight edges square to
 X and Y. Its short dimension is the width, its long one the run, and its
-height gives the depth. A round-ended slot, a floor split over several faces
-or any free-form cavity is reported in `INFO` and left alone, as pockets
-always have been; the flat bottom of a blind bore is passed over in silence.
+height gives the depth. A rectangle that qualifies as a pocket goes to
+[Pockets](#pockets) instead. A round-ended slot, a floor split over several
+faces or any free-form cavity is reported in `INFO` and left alone. The flat
+bottom of a blind bore is passed over without a note.
 
 ```python
 GROOVE = True             # detect grooves at all
 SAW_KERF = 4.0            # blade thickness, mm
 SAW_ALONG = "X"           # directions the saw can run: "X", "Y" or "XY"
 GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
+GROOVE_MIN_Y = 50.0       # keep grooves this far from the lower edge, mm
 GROOVE_RK = "WRKR"        # which side of the programmed edge the groove lies
 ```
 
@@ -369,6 +377,25 @@ sawing macro at all** — only `<131 UfluBohr>`, `<151 UflurTasche>` and
 groove in the underside needs the piece turned over exactly as an underside
 bore does, and rides along with that setup when the drilling already calls
 for one.
+
+**A groove is kept off the lower edge.** The gripper holds the piece along
+Y = 0, so a groove along X whose near side is less than `GROOVE_MIN_Y` from
+that edge is sawn with the piece the other way round. A groove in the face is
+sawn with the piece turned end for end. A groove in the underside is sawn
+with the piece turned over the other way (`F` instead of `F` turned, or the
+reverse). Either way it ends up the same distance from the top edge. No
+extra turn is needed: the four placements above already swap the top and
+lower edges. On a 600 × 300 panel, a groove modelled at Y 20…24 in the face
+comes out as
+
+```
+<109 \Nuten\   XA="0"  YA="276"  XE="600"  YE="276"  NB="4"   (face up, turned end for end)
+```
+
+This ranks after reaching every bore and before the grip. Of two setups, the
+groove goes to the one that keeps it clear. When no plan keeps it clear (one
+groove near each edge, or a panel too narrow), it is cut where it is and
+`INFO` says so. `GROOVE_MIN_Y = 0` switches the rule off.
 
 **woodWOP programs a groove by one of its edges, not down its middle.**
 `XA/YA`…`XE/YE` is one edge and `RK` offsets the blade a full `NB` to one
@@ -401,6 +428,52 @@ belongs to the groove, not to the panel outline — following it would rout the
 panel to the shape of its own grooving — so the outline is taken from
 whichever of the two faces still goes round the plain rectangle, and only
 when neither does is the panel taken to be shaped at all.
+
+### Pockets
+
+Big openings are milled with the router as `<112 \Tasche\`:
+
+* **round**: an opening along Z wider than `POCKET_MIN`, unless the vertical
+  array carries a bit of that size (the 35 mm hinge cup stays a bore). It is
+  written `FO="1"`, with `RD` the radius and `LA = BR = 0`;
+* **rectangular**: a rectangle, sharp or round cornered, whose short side is
+  over `POCKET_MIN` and which runs out to no edge of the part. It is written
+  `FO="0"`, `LA × BR`, with `RD` the corner radius. A dead-end one is read
+  off its floor, a through one off the matching holes it leaves in both
+  faces.
+
+`XA/YA` is the centre and `TI` the depth from the face it is cut from, which
+is the panel thickness for a through pocket. Everything else is laid out as
+woodWOP 9.0.152 writes it, after `Examples/Pocket circle.mpr` and
+`Examples/Pocket rectangle.mpr`:
+
+```
+<112 \Tasche\   XA="300"  YA="200"  FO="0"  LA="55"  BR="55"  RD="20"  TI="18"  T_="104"
+```
+
+```python
+POCKET = True             # convert big openings into pockets at all
+POCKET_MIN = 20.0         # mm: round over this across, rectangles whose
+                          # short side is over this, are pockets
+POCKET_TOOL = "104"       # T_: the router the pocket is cut with
+POCKET_FEED = "5"         # F_: feed, m/min, or "STANDARD"
+POCKET_XY = "80"          # XY: step-over, % of the tool diameter
+```
+
+Like a bore, a pocket is cut from the top face only, so one in the underside
+needs the piece turned over. A through pocket can be cut either way up.
+`INFO` notes a pocket with sharp corners, where the router leaves its own
+radius. A narrower rectangle is still a groove for the saw, and so is a slot
+that runs out to an edge, however wide. For the grip, a pocket counts as
+material lost.
+
+Pockets need a router at `POCKET_TOOL`. Where the machine has none (see
+below), set `POCKET = False`. Big round openings are then left as geometry
+and reported, as before, and flat cavities go back to the groove rules.
+
+A cylinder patch that is not a whole circle is never a bore. A rounded
+pocket corner, a round outer corner of the part and the end of a slot are
+all passed over: a run of patches must sweep at least 270° round its axis.
 
 ### Shaped outlines are not milled
 
@@ -809,6 +882,9 @@ the piece for the gripper — not milled.
 | `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
 | `SAW_ALONG` | `"X"` | the directions the saw unit can run |
 | `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
+| `GROOVE_MIN_Y` | 50.0 | turn the piece so no groove lies closer than this to the lower edge, where the gripper holds; 0 = off |
+| `POCKET` | on | mill big openings as `<112 Tasche>` — see [Pockets](#pockets) |
+| `POCKET_TOOL` | `"104"` | the router the pockets are cut with |
 | `MERGE_IDENTICAL` | on | convert one solid per shape and add the quantities up; off converts every solid separately |
 | `DUP_TOL` | 0.01 | how far two solids may differ and still count as the same shape |
 | `CONTOUR` | off | mill a shaped outline (`]1` + `<105 Konturfraesen>`); off while the machine has no router |
@@ -821,7 +897,8 @@ Which face ends up on top, and which way round, is **not** a setting: it is
 decided per part by the planner above, because it is a machining choice
 rather than a property of the model. The rest of the block is `SNAP`,
 `MAX_DIA`, `BM_VERT`, `BM_PUNCH`, `PUNCH_DEPTH`, `THICKNESS`, `GROOVE`,
-`GROOVE_MAX_WIDTH`, the `GRIP_…` sizes, the `BAND_…` mark layout and `EOL`.
+`GROOVE_MAX_WIDTH`, `POCKET_MIN`, `POCKET_FEED`, `POCKET_XY`, the `GRIP_…`
+sizes, the `BAND_…` mark layout and `EOL`.
 
 It outputs **text, not files**. When you write it out, use CRLF —
 `open(path, "w", encoding="cp1252", newline="\r\n")` — for the reason above.
@@ -1145,9 +1222,52 @@ It carries its own JSON reader, so there is nothing to install, but it needs
 Windows Excel: the file is read with `ADODB.Stream` and the JSON kept in
 `Scripting.Dictionary`, neither of which a Mac has.
 
+## Cut outlines
+
+`gh_brep2holes.py` is a Rhino 8 Script component (Python 3) that returns the
+outline of every cut in a raw solid, with nothing about the machine involved:
+
+| | Name | Type | Access | |
+| --- | --- | --- | --- | --- |
+| input | `B` | Brep | **Tree** | one part per branch |
+| output | `C` | — | | one curve per cut |
+| output | `D` | — | | that cut's depth, mm |
+
+`C` and `D` are parallel trees on the paths that came in on `B`. Each hole,
+groove, pocket, slot and cut-out comes back as the curve of its own outline,
+projected onto the face it was cut from. A round hole comes back at its own
+diameter, a slot with its round ends. Depth is measured from that face to the
+deepest point of the cut. A stepped cut gives one curve per step, so a
+counterbore comes back as two circles. A through cut comes out once, at the
+face looking most towards +Z (`BOTH_ENDS` gives both). A through cut that
+also runs out to an edge is part of the outline and is left out. Nothing is
+moved: the curves lie over the model where it stands. Notes go to the
+component's `out`.
+
+## Take by count
+
+`gh_takebycount.py` reads list `A` as counts over list `B`: each count takes
+that many elements off the front of `B`, and the value of that block comes
+out on `V`, one item per count.
+
+```
+A = 1 2 1 2 2 2 1 1 1 2 2      B = ten 1s, then seven 2s
+V = 1 1 1 1 1 1 2 2 2 2 2
+```
+
+Both lists are read as whole numbers (a double such as `10.0` and the text
+`"10"` count as `10`). Branches are paired by path, or by position where the
+paths differ. `INFO` reports per branch:
+
+* `B` running out before the counts end;
+* elements of `B` left over at the end;
+* a block that straddles two values (the first one is used);
+* a count below 1;
+* an item that is not a whole number.
+
 ## ShapeDiver
 
-All four components are written to pass ShapeDiver's script review
+All the components are written to pass ShapeDiver's script review
 ([forbidden Grasshopper functionalities](https://help.shapediver.com/doc/forbidden-grasshopper-functionalities)):
 a definition there may not read from or write to the Rhino document, and may
 not read or save local files.
@@ -1174,7 +1294,7 @@ not read or save local files.
   of the shop's existing programs, and `check_mpr.py` passes on all 82 of them
   as well as on everything this tool generates — but the first converted
   program should still be opened in woodWOP and dry-run before it cuts.
-* **The two-setup split covers drilling and grooving.** Contour milling is
+* **The two-setup split covers drilling, grooving and pockets.** Contour milling is
   off and, when switched on, not checked against the machine. Each program
   assumes the operator lays the piece the way `INFO` names — turned over
   about the long or the short axis, or end for end — and re-references it to
@@ -1190,9 +1310,10 @@ not read or save local files.
   model.
 * Only cylindrical bores become drilling macros. Countersinks, chamfers,
   spherical and toroidal faces are reported as notes and skipped.
-* Pockets modelled as solid cavities are **not** converted
-  (`<112 Tasche>` is not generated). The Grasshopper component does read
-  sawn grooves — see [Grooves](#grooves) — but `dxf2mpr.py` does not.
+* Only the Grasshopper component reads sawn grooves and pockets — see
+  [Grooves](#grooves) and [Pockets](#pockets). `dxf2mpr.py` does neither, and
+  `<112 Tasche>` has not yet been run on the machine. Only round pockets and
+  rectangles square to X and Y are converted; any other cavity is reported.
 * Feed rates, spindle speeds and tool numbers are left at `STANDARD` /
   woodWOP defaults. `BohrVert` is written with `BM="LS"`, `S_="2"` — change
   with `--bm-vert` or edit in woodWOP. The Grasshopper component writes

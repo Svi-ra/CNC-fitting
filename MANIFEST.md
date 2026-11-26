@@ -21,12 +21,14 @@ CNC-fitting/
 ├─ Examples/                  CAD sources, reference programs, output
 │  ├─ Banding/                shop programs carrying edge-banding marks
 │  ├─ CutList/                a sample Excel cut list: JSON, and an Excel XML
-│  ├─ CAD-models/             the DXF/DWG sources
+│  ├─ CAD-models/             the DXF/DWG/STEP sources
+│  │  ├─ Comoda 03-mpr/       gh_brep2mpr output for Comoda 03.stp
 │  │  └─ MPR/                 converter output (generated)
 │  ├─ Grasshopper/            the parametric model the DXFs come from
 │  ├─ Meshes/                 one part as a 3D model, paired with the export
 │  ├─ Model-associated/       one part in every woodWOP-related format
 │  ├─ PAL_8681_SM_Alb_Diamant/  a real 82-part production batch
+│  ├─ Pocket*.mpr             woodWOP's own <112 Tasche>, round and rectangular
 │  └─ WoodWop_export/         woodWOP's own programs: the meshed part, Center punch
 └─ Tools/                     the converters, the checker, the GH components
 ```
@@ -58,6 +60,7 @@ Key sections used by the tooling:
 | `Noptiera-2.mpr` | MPR | woodWOP 9 scratch program, 410 × 410 × 19 — not a conversion of the DXF |
 | `Test-noptiera.dxf` | DXF AC1021, ASCII SAT | **9 solids** — a whole nightstand in assembly position |
 | `320x234.dxf` | DXF | a 320 × 234 × 18 panel with Ø7 marks 0.5 mm deep punched from **both** faces on one axis — the case that must stay two dead-end bores, not one through bore |
+| `Comoda 03.stp` | STEP | a whole chest of drawers (`comoda`), 18 distinct panels — the model `gh_brep2mpr.py` was checked on for 0.22.0 |
 
 All of these come out of Grasshopper via the Pancake exporter: model space
 holds solids only, on layer `PancakeDefault`. **woodWOP DXF-Import cannot read
@@ -73,6 +76,33 @@ python Tools/dxf2mpr.py Examples/CAD-models -o Examples/CAD-models/MPR --log Exa
 ```
 
 Regenerate at any time; nothing else depends on these files.
+
+Beside them, `2_320x234-B_2.mpr` and `2_320x234-F_2.mpr` are the two setups
+an earlier `gh_brep2mpr.py` wrote for the `320x234` panel, under the old
+`-B`/`-F` file names: one per face, each with its own dead-end marks.
+
+### `Examples/CAD-models/Comoda 03-mpr/` — Grasshopper output
+
+The 25 programs `gh_brep2mpr.py` wrote for `Comoda 03.stp` (IDs `1A` …
+`18A`, `face`/`back` naming). Macro mix: 152 `BohrVert`, 129 `BohrHoriz`, 4
+`Nuten`, 53 banding comments. They were written before 0.22.0's insert-mode
+change, so three of the grooves still carry `EM="MOD0"`. Regenerate for the
+current output.
+
+### `Examples/Pocket.mpr`, `Pocket circle.mpr`, `Pocket rectangle.mpr` — the pocket reference
+
+woodWOP 9.0.152 programs with one `<112 \Tasche\` each, on a variable blank
+(`LA="L"`, `BR="B"`, `DI="D"`), centred at 300, 200 and 18 deep, router
+`T_="104"`:
+
+| File | Pocket |
+| --- | --- |
+| `Pocket circle.mpr` | round, `FO="1"`, `RD="27"` (Ø54) |
+| `Pocket rectangle.mpr` | 55 × 55, `FO="0"`, corner `RD="20"` |
+| `Pocket.mpr` | round, `FO="1"`, `RD="40"` (Ø80) |
+
+They are the **only ground truth for `\Tasche\`** in the repository: what
+`gh_brep2mpr.py` writes for a pocket is laid out after the first two.
 
 ### `Examples/Noptiera-1.mpr` — hand-built reference
 
@@ -124,6 +154,10 @@ and settled three things the format spec does not say plainly:
 
 The two files disagree on the groove's section — the model has 4 mm wide × 9
 deep, the program says 8 × 7. Position, run and side agree.
+
+`0_340x252-F_1.mpr` is not woodWOP's: it is the `F` program an earlier
+`gh_brep2mpr.py` wrote for the 340 × 252 panel, under the old file names. It
+holds horizontal bores only.
 
 ### `Examples/Banding/` — the edge-banding reference
 
@@ -196,7 +230,9 @@ the Ø8 blind holes are dowels).
 | --- | --- |
 | `Tools/dxf2mpr.py` | DXF → MPR batch converter. Reads ACIS solids (ASCII SAT and binary SAB) and woodWOP-layered 2D DXF. |
 | `Tools/check_mpr.py` | Pre-flight validator for MPR programs — structure, coordinates inside the part, depths, diameters, groove width and run, contour references. |
-| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings and sawn grooves from the geometry alone, checks each against what the drilling head and the saw carry, and splits a part over two setups — face up and turned over, either of them possibly turned end for end — when one clamping cannot reach everything. Places each setup so a cut corner, rebate or pocket stays out of the gripper's ranked zones, even at the cost of a second setup. Writes boring and sawing only; a shaped outline is reported, not milled. Solids of the same shape, material, grain and banding are converted once, their quantities added up into the file name; a cut list comes out beside the programs, a line per panel name, the grain read off each part's plane. File names read `<ID>_<face|back>_x<quantity>_<Lungime>x<Latime>` — `back` face up, the operator seeing the back, `face` turned over — with the sizes in the cut list's grain-wise order. Edge banding, given as a pattern per part read clockwise on the part's own plane, is drawn as graphic comments on the banded edges of every setup, turned with the piece as its bores are; a material code per side and a code map name the banding material of each edge, in the report and in the cut list's `L-1` … `W-2`. Programs are numbered from 1, followed by a model suffix taken from the input file's name (`2471-MM-fitting` → `1MM`) when one comes in on `FILE`. |
+| `Tools/gh_brep2mpr.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, MPR programs and their file names out. Expects parts already flat in XY; recognises size, drillings, sawn grooves and router pockets from the geometry alone, checks each against what the drilling head, the saw and the router carry, and splits a part over two setups — face up and turned over, either of them possibly turned end for end — when one clamping cannot reach everything. Places each setup so a cut corner, rebate or pocket stays out of the gripper's ranked zones, even at the cost of a second setup, and turns it so no groove lies within 50 mm of the lower edge the gripper holds. Writes boring, sawing and pockets (`<112 Tasche>`); a shaped outline is reported, not milled. Solids of the same shape, material, grain and banding are converted once, their quantities added up into the file name; a cut list comes out beside the programs, a line per panel name, the grain read off each part's plane. File names read `<ID>_<face|back>_x<quantity>_<Lungime>x<Latime>` — `back` face up, the operator seeing the back, `face` turned over — with the sizes in the cut list's grain-wise order. Edge banding, given as a pattern per part read clockwise on the part's own plane, is drawn as graphic comments on the banded edges of every setup, turned with the piece as its bores are; a material code per side and a code map name the banding material of each edge, in the report and in the cut list's `L-1` … `W-2`. Programs are numbered from 1, followed by a model suffix taken from the input file's name (`2471-MM-fitting` → `1MM`) when one comes in on `FILE`. |
+| `Tools/gh_brep2holes.py` | Grasshopper Script component (Rhino 8, Python 3): a data tree of raw Breps in, the outline of every cut out — each hole, groove, pocket and cut-out as a curve projected onto the face it was cut from, with its depth on a parallel tree. Nothing about the machine; nothing moved. |
+| `Tools/gh_takebycount.py` | Grasshopper Script component (Rhino 8, Python 3): reads list `A` as counts over list `B` and returns, per count, the value of the block it takes; mismatches and non-integers are reported in `INFO`. |
 | `Tools/gh_name2zpl.py` | Grasshopper Script component (Rhino 8, Python 3): panel names in, Code 128 labels out as one ZPL text, ready to save and send to the printer as bytes. Writes no file itself, so it passes ShapeDiver's review. Wired downstream of `gh_brep2mpr.py`'s `NAME`. Barcodes are `^BC`, the printer's own Code 128; the component lays the label out, sizes the bars to the stock and reports a name that will not fit or cannot be encoded. |
 | `Tools/gh_cutlist2json.py` | Grasshopper Script component (Rhino 8, Python 3): `gh_brep2mpr.py`'s cut list, the exact material name for each category and the project name in, one JSON out that lays the list out as the shop's Excel cut lists are — a block per material, the panel names as comments, `Nr.` the program ID, and each edge's banding as name, designation and thickness. Text only, no file. Turns red rather than run once per line when its list inputs are left on Item access. Categories that share a material share a block. |
 | `Tools/gh_json2xlsx.py` | Grasshopper Script component (Rhino 8, Python 3): that JSON in, the six text files of an `.xlsx` out as paths and texts side by side, plus the archive's name without extension. Zipped by an archive download (ShapeDiver's), they open in Excel as the formatted sheet, ready to print, matching what `CutListImport.bas` builds. Text only, no file. |

@@ -9,6 +9,78 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.23.0] — 2026-11-26
+
+Pockets for the router, grooves kept off the gripped edge, and two more
+Grasshopper components.
+
+### Added
+
+- **`gh_brep2mpr.py`: pockets, `<112 \Tasche\`.** Big openings are no longer
+  left as geometry:
+  - a round opening along Z wider than `POCKET_MIN` (20 mm) is a round
+    pocket (`FO="1"`, `RD` the radius). Exception: a size the vertical array
+    carries, such as the 35 mm hinge cup, stays a bore;
+  - a rectangle, sharp or round cornered, whose short side is over
+    `POCKET_MIN` and that runs out to no edge is a rectangular pocket
+    (`FO="0"`, `LA × BR`, `RD` the corner radius). A dead-end one is read off
+    its floor, a through one off the matching holes in both faces.
+
+  `XA/YA` is the centre and `TI` the depth from the face it is cut from (the
+  thickness for a through pocket). The block is laid out as woodWOP 9.0.152
+  writes it, after `Examples/Pocket circle.mpr` and
+  `Examples/Pocket rectangle.mpr`. The router is `POCKET_TOOL` (`"104"`),
+  with `POCKET_FEED` and `POCKET_XY` (step-over). Pockets go through the
+  setup planner like bores: one in the underside needs the piece turned
+  over, a through one can be cut either way up. INFO notes sharp corners,
+  where the router leaves its own radius. A narrower rectangle is still a
+  groove for the saw, and so is a slot that runs out to an edge.
+  `POCKET = False` switches it off.
+- **`gh_brep2mpr.py`: `GROOVE_MIN_Y` (50 mm).** The gripper holds the lower
+  edge (Y = 0), so a groove along X whose near side is closer than this to
+  that edge is placed with the piece the other way round: turned end for end
+  for a groove in the face, or turned over the other way for one in the
+  underside. It then sits as far from the top edge instead. No new turn is
+  involved: the existing four placements already swap the top and lower
+  edges. The rule ranks after reaching every bore and before the grip, and
+  of two setups a groove goes to the one that keeps it clear. When no plan
+  keeps it clear (grooves near both edges, a narrow panel), it is cut where
+  it is and INFO says why. `0` switches it off.
+- **`Tools/gh_brep2holes.py`**: a Grasshopper Script component, raw Brep in,
+  the outline of every cut out. Every hole, groove, pocket and cut-out comes
+  back as a curve projected onto the face it was cut from (`C`), with its
+  depth alongside it (`D`). The curves are left where the solid is, and
+  nothing about the machine is involved.
+- **`Tools/gh_takebycount.py`**: a Grasshopper Script component that reads
+  list `A` as counts over list `B` and returns, per count, the value of the
+  block it takes. Mismatched lengths, blocks that straddle two values and
+  items that are not whole numbers are named in `INFO`.
+- **Examples:** the woodWOP 9.0.152 pocket references `Examples/Pocket.mpr`,
+  `Pocket circle.mpr` and `Pocket rectangle.mpr`. Also the Comoda 03 model
+  (`Examples/CAD-models/Comoda 03.stp`) with the 25 programs converted from
+  it, and three earlier `gh_brep2mpr.py` outputs. All are listed in
+  [MANIFEST.md](MANIFEST.md).
+
+### Changed
+
+- **Cylinder patches that are not a whole circle are no longer bores.** A
+  rounded pocket corner, a round outer corner of the part or the end of a
+  slot was read as a drilling. A run of patches now has to sweep at least
+  270° round its axis. The two halves of a bore split along its length add
+  up to a whole circle.
+- **The grip check counts pockets as material lost**, as it did round
+  openings over `MAX_DIA`. Bores that are drilled still do not count.
+
+### Tested
+
+- The setup planner with Rhino stubbed out, on a 600 × 300 panel. A groove
+  in the face at Y 20 comes out turned end for end at Y 276, and one in the
+  underside at Y 20 comes out turned over at Y 276. A groove at Y 200 is left
+  as modelled. Grooves at Y 20 and Y 276 together leave one near the edge,
+  with the INFO note. With `GROOVE_MIN_Y = 0` nothing changes.
+- The script parses. Not run in Grasshopper: pocket recognition, the groove
+  rule on real solids, `gh_brep2holes.py` and `gh_takebycount.py`.
+
 ## [0.22.0] — 2026-11-23
 
 File names that say `face` and `back`, grooves that stay inside their line,
