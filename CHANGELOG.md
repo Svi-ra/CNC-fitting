@@ -9,6 +9,29 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.25.0] — 2026-11-26
+
+Grooves choose Depth or Length per end, from how far each end is from the
+edge or the next opening.
+
+### Added
+
+- **`gh_brep2mpr.py`: `SAW_DIA` (125 mm, a placeholder), `EM_DEPTH`
+  (`MOD0`) and `EM_LENGTH` (`MOD1`).** Each end of a groove is measured
+  along its line to the panel's edge or to an opening in the same face (a
+  bore, a pocket, another groove). An end that runs out into one, or is more
+  than `SAW_DIA / 2` from it, is sawn Depth. An end closer than that is sawn
+  Length, so the blade's overrun does not break out.
+- **A groove whose ends disagree is split in half.** Each half is sawn in
+  the mode of its own end, and `INFO` notes the split with both distances.
+
+### Changed
+
+- **A groove through the whole piece is written `EM="MOD0"`** (Depth), as
+  woodWOP's own export does, no longer `MOD2`.
+- **A blind groove far from every edge is written `MOD0`**, no longer
+  always `MOD1`.
+
 ## [0.24.0] — 2026-11-26
 
 The machine now has a router: one Ø20 bit, tool 1, for pockets and shaped

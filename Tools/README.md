@@ -414,14 +414,38 @@ the centre line instead. The side convention is confirmed only for a run
 towards +X, the direction this saw runs; the +Y case, reachable by setting
 `SAW_ALONG = "XY"`, is derived by rotating that result and is unverified.
 
-**A groove stops at its end points.** `EM` is woodWOP's insert mode, and the
-converter writes `MOD1` (*length*): the whole blade stays between `XA/YA` and
-`XE/YE`, so the cut never runs past either end of the line. `MOD0` (*depth*)
-would reach full depth at the end points and overshoot by the blade's arc.
-This applies to a groove that runs out to one edge as well, so its depth runs
-out just short of that edge. A groove through the whole piece is written
-`MOD2` (*length + safety distance*), which lets the blade run in and out clear
-of both edges. Only the mode is set; the coordinates are the groove's own.
+**Each end of a groove picks its own insert mode.** `EM` is woodWOP's insert
+mode. `MOD0` (*Depth*) reaches full depth right at the end point, so the
+blade's arc runs past it by up to the blade's radius. `MOD1` (*Length*) keeps
+the whole blade between `XA/YA` and `XE/YE` and leaves the arc in the floor.
+Each end is measured along the groove's line to whatever stops it: the
+panel's edge, or another opening in the face on that line (a bore, a pocket,
+another groove).
+
+| End | Mode |
+| --- | --- |
+| runs out into the edge or an opening | Depth |
+| closer than `SAW_DIA / 2` to the edge or an opening | Length — the overrun would break out into it |
+| further away than that | Depth |
+
+```python
+SAW_DIA = 125.0           # grooving saw blade diameter, mm -- not yet confirmed
+EM_DEPTH = "MOD0"
+EM_LENGTH = "MOD1"
+```
+
+When the two ends want different modes, the line is **cut in half** and each
+half is sawn in the mode of its own end, with a note in `INFO`. On a 600 mm
+panel, a groove from X 0 to X 570 (open at one end, 30 mm short of the other
+edge) comes out as
+
+```
+<109 \Nuten\   XA="0"    XE="285"  EM="MOD0"
+<109 \Nuten\   XA="285"  XE="570"  EM="MOD1"
+```
+
+The edge is the panel's bounding rectangle; the notches of a shaped outline
+are not looked at. `SAW_DIA` is a placeholder until the real blade is known.
 
 A groove that runs out to an edge **notches the face it was sawn into**, so
 that face's outer loop is no longer the bounding rectangle. That notch

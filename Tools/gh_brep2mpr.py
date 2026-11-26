@@ -410,6 +410,23 @@ GROOVE_MIN_Y = 50.0
 # programming the centre line.
 GROOVE_RK = "WRKR"
 
+# How each end of a groove is entered, EM in <109 \Nuten\. "Depth" (MOD0)
+# has the full depth right at the end point, so the blade's arc runs past it
+# by up to its radius; "Length" (MOD1) keeps the whole blade between the end
+# points and leaves the arc in the floor. Each end is measured along the
+# groove's line to whatever stops it: the panel's edge, or another opening
+# in the face on that line (a bore, a pocket, another groove).
+#   - an end that runs out into the edge or an opening      -> Depth
+#   - an end closer than SAW_DIA / 2 to the edge or opening -> Length, so
+#     the overrun does not break out into it
+#   - an end further away than that                         -> Depth
+# When the two ends want different modes the line is cut in half and each
+# half is sawn in the mode of its own end. The edge is the panel's bounding
+# rectangle: a shaped outline is not looked at.
+SAW_DIA = 125.0           # grooving saw blade diameter, mm -- CHECK IT
+EM_DEPTH = "MOD0"
+EM_LENGTH = "MOD1"
+
 # The router: one bit, tool number ROUTER_TOOL in woodWOP's tool list, used
 # for the outline (<105 \Konturfraesen\) and for pockets (<112 \Tasche\).
 # Its diameter is what an opening has to be wider than to be milled at all,
@@ -1605,7 +1622,6 @@ def groove_feature(g, lx, ly, lz):
         else:
             edge = g.lo[1] if GROOVE_RK == "WRKR" else g.hi[1]
         xa, ya, xe, ye = g.lo[0], edge, g.hi[0], edge
-        full = g.lo[0] <= FACE_TOL and g.hi[0] >= lx - FACE_TOL
     else:
         dirn, nb, run = "Y", w, h
         if GROOVE_RK == "NoWRK":
@@ -1613,14 +1629,95 @@ def groove_feature(g, lx, ly, lz):
         else:
             edge = g.hi[0] if GROOVE_RK == "WRKR" else g.lo[0]
         xa, ya, xe, ye = edge, g.lo[1], edge, g.hi[1]
-        full = g.lo[1] <= FACE_TOL and g.hi[1] >= ly - FACE_TOL
 
     return {"t": "groove", "up": up, "dirn": dirn, "nb": nb, "run": run,
-            "ti": (lz - z) if up else z, "full": full,
+            "ti": (lz - z) if up else z,
             "xa": xa, "ya": ya, "xe": xe, "ye": ye,
             "low": (GROOVE_MIN_Y > 0 and dirn == "X"
                     and g.lo[1] < GROOVE_MIN_Y - GEO_TOL),
-            "ylo": g.lo[1]}
+            "ylo": g.lo[1],
+            "box": (g.lo[0], g.lo[1], g.hi[0], g.hi[1])}
+
+
+def face_openings(jobs, pt, vec, lx, ly, lz):
+    """Footprints (x0, y0, x1, y1) of everything open in the top face of a
+    setup: bores and round pockets that reach it, pockets and grooves cut
+    from it. What a groove's end is measured to -- see SAW_DIA."""
+    out = []
+    for kind, item, _size in jobs:
+        if kind == "hole":
+            f = feature(item.moved(pt), lx, ly, lz)
+            if f["t"] == "vert" and f["top"]:
+                r = 0.5 * item.dia
+            elif f["t"] == "pocket" and f["up"]:
+                r = f["rd"]
+            else:
+                continue
+            out.append((f["x"] - r, f["y"] - r, f["x"] + r, f["y"] + r))
+        elif kind == "pocket":
+            f = pocket_feature(item.moved(pt, vec), lz)
+            if f["up"]:
+                out.append((f["x"] - 0.5 * f["la"], f["y"] - 0.5 * f["br"],
+                            f["x"] + 0.5 * f["la"], f["y"] + 0.5 * f["br"]))
+        else:
+            g = item.moved(pt, vec)
+            if g.normal[2] > 0:
+                out.append((g.lo[0], g.lo[1], g.hi[0], g.hi[1]))
+    return out
+
+
+def end_gaps(feat, openings, lx, ly):
+    """(start, end): how far each end of a groove is from what stops it
+    along its line -- the panel's edge or an opening in the face."""
+    x0, y0, x1, y1 = feat["box"]
+    if feat["dirn"] == "X":
+        a, b, c0, c1, size, k = x0, x1, y0, y1, lx, 0
+    else:
+        a, b, c0, c1, size, k = y0, y1, x0, x1, ly, 1
+    lo, hi = 0.0, size
+    for o in openings:
+        if o == feat["box"]:
+            continue                    # the groove itself
+        if o[1 - k] >= c1 - GEO_TOL or o[3 - k] <= c0 + GEO_TOL:
+            continue                    # not on the groove's line
+        if o[k] <= a + FACE_TOL:        # behind the start, or over it
+            lo = max(lo, min(o[2 + k], a))
+        if o[2 + k] >= b - FACE_TOL:    # past the end, or over it
+            hi = min(hi, max(o[k], b))
+    return max(a - lo, 0.0), max(hi - b, 0.0)
+
+
+def end_mode(gap):
+    """EM for one end of a groove that far from what stops it."""
+    if gap <= FACE_TOL or gap >= 0.5 * SAW_DIA - GEO_TOL:
+        return EM_DEPTH
+    return EM_LENGTH
+
+
+def groove_runs(feat, openings, lx, ly, notes):
+    """One groove feature -> the features to saw: itself with its EM, or its
+    two halves, each in the mode its own end wants. See SAW_DIA."""
+    ga, gb = end_gaps(feat, openings, lx, ly)
+    ma, mb = end_mode(ga), end_mode(gb)
+    if ma == mb:
+        one = dict(feat)
+        one["em"] = ma
+        return [one]
+    k = "xa" if feat["dirn"] == "X" else "ya"
+    e = "xe" if feat["dirn"] == "X" else "ye"
+    mid = 0.5 * (feat[k] + feat[e])
+    first, second = dict(feat), dict(feat)
+    first[e], first["em"], first["run"] = mid, ma, 0.5 * feat["run"]
+    second[k], second["em"], second["run"] = mid, mb, 0.5 * feat["run"]
+    notes.append(
+        "%s mm groove at %s=%s split in half at %s=%s - its ends are %s and "
+        "%s mm from the edge or an opening (saw radius %s mm), so one half is "
+        "sawn Depth and the other Length"
+        % (fnum(feat["nb"]), "Y" if feat["dirn"] == "X" else "X",
+           fnum(feat["ya"] if feat["dirn"] == "X" else feat["xa"]),
+           feat["dirn"], fnum(mid), fnum(ga), fnum(gb),
+           fnum(0.5 * SAW_DIA)))
+    return [first, second]
 
 
 def diameters(key):
@@ -1728,18 +1825,15 @@ def macro(feat, dia, lz):
 
     if feat["t"] == "groove":
         # Parameters and their order follow woodWOP's own export of this
-        # macro; TV="0" leaves the scoring pass off. EM is the insert mode:
-        # MOD1 ("length") keeps the whole blade between the start and end
-        # points, so the cut never runs past either end of the line -- MOD0
-        # ("depth") would reach full depth there and overshoot by the blade's
-        # arc. MOD2 lets the blade run in and out clear of a groove that
-        # reaches both edges.
+        # macro; TV="0" leaves the scoring pass off. EM is the insert mode,
+        # picked per end by groove_runs -- see SAW_DIA. A feature that never
+        # went through it is sawn Length, which cannot run past either end.
         return (109, "Nuten", [
             ("XA", fnum(feat["xa"])), ("YA", fnum(feat["ya"])), ("WI", "0"),
             ("XE", fnum(feat["xe"])), ("YE", fnum(feat["ye"])),
             ("NB", fnum(dia)),
             ("RK", GROOVE_RK),
-            ("EM", "MOD2" if feat["full"] else "MOD1"),
+            ("EM", feat.get("em", EM_LENGTH)),
             ("AD", "0"),
             ("TI", fnum(feat["ti"])),
             ("TV", "0"), ("VT", "0"), ("MV", "GL"),
@@ -2401,6 +2495,21 @@ def plan(holes, grooves, lx, ly, lz, notes, grip=None, pockets=()):
                      % (needed[0][0], ORIENT_NAME[needed[0]],
                         turn_between(needed[0], needed[1]), needed[1][0]))
     grip_notes(needed, able, grip, notes)
+
+    # Each groove's ends, measured in the setup it is sawn in.
+    for o in needed:
+        if not any(f["t"] == "groove" for f, _n in work[o]):
+            continue
+        pt, vec = setup_maps(o[0], lx, ly, lz, o[1])
+        openings = face_openings(jobs, pt, vec, lx, ly, lz)
+        done = []
+        for feat, nom in work[o]:
+            if feat["t"] == "groove":
+                done.extend((f, nom)
+                            for f in groove_runs(feat, openings, lx, ly, notes))
+            else:
+                done.append((feat, nom))
+        work[o] = done
     return [(o, work[o]) for o in needed]
 
 

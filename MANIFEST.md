@@ -86,8 +86,9 @@ an earlier `gh_brep2mpr.py` wrote for the `320x234` panel, under the old
 The 25 programs `gh_brep2mpr.py` wrote for `Comoda 03.stp` (IDs `1A` …
 `18A`, `face`/`back` naming). Macro mix: 152 `BohrVert`, 129 `BohrHoriz`, 4
 `Nuten`, 53 banding comments. They were written before 0.22.0's insert-mode
-change, so three of the grooves still carry `EM="MOD0"`. Regenerate for the
-current output.
+change. Since 0.25.0 the insert mode is chosen per end of each groove, so
+their `EM` values may differ from what the converter writes now. Regenerate
+for the current output.
 
 ### `Examples/Pocket.mpr`, `Pocket circle.mpr`, `Pocket rectangle.mpr` — the pocket reference
 
