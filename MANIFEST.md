@@ -149,7 +149,10 @@ and settled three things the format spec does not say plainly:
 - the macro is `\Nuten\`, not the spec's machine-translated `\grooveen\`;
 - `XA/YA`…`XE/YE` is one **edge** of the groove, with `RK` offsetting the
   blade a full `NB` to one side — the export writes `YA="_BSY-10"` and
-  `RK="WRKR"` for a groove the model puts at Y 410…414;
+  `RK="WRKR"` for a groove the model puts at Y 410…414. Which side `RK`
+  puts the blade on cannot be told from this pair, since the two describe
+  different grooves; woodWOP later showed `WRKR` is right of the direction
+  of travel, −Y for a run towards +X;
 - a groove running out to an edge notches the face it was sawn into, which is
   not part of the panel outline.
 

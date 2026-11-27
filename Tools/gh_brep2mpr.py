@@ -399,16 +399,25 @@ GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 GROOVE_MIN_Y = 50.0
 
 # woodWOP does not program a groove down its middle: XA/YA..XE/YE is one
-# EDGE of the groove and RK offsets the blade a full NB to one side. Checked
-# against a woodWOP 9.0.152 export of a known part --
-# Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr against
-# Examples/Meshes/472x420.gltf
-# -- where a groove occupying Y 410..414 and running towards +X is written
-# XA="75" YA="410" XE="_BSX" YE="410" RK="WRKR". So with RK="WRKR" the groove
-# lies on the +Y side of a run towards +X; "WRKL" is the other side, and the
-# rotated equivalents apply to a run towards +Y. Set "NoWRK" to go back to
-# programming the centre line.
+# EDGE of the groove and RK offsets the blade a full NB to one side: "WRKR"
+# puts the blade on the right of the direction of travel, as it does for
+# CONTOUR_RK. So with RK="WRKR" the groove lies on the -Y side of a run
+# towards +X (the line is its upper edge) and on the +X side of a run towards
+# +Y (the line is its left edge); "WRKL" is the other side. Checked in
+# woodWOP on Comoda.stp, where the back panel's groove at Y 440.5..444.5
+# came out at 436.5..440.5 while the line was written on its lower edge.
+# (Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr and
+# Examples/Meshes/472x420.gltf, used for this at first, describe different
+# grooves -- 8x7 in the program, 4x9 in the model -- so they cannot settle
+# the side.) Set "NoWRK" to go back to programming the centre line.
 GROOVE_RK = "WRKR"
+
+# A groove exactly one blade wide (SAW_KERF, within GEO_TOL) is sawn in a
+# single pass, so it is programmed down its centre line with this RK instead
+# -- no side to get wrong. Checked in woodWOP on Comoda.stp: a 4 mm groove
+# at Y 440.5..444.5 written YA="442.5" RK="NoWRK" lands on 440.5..444.5.
+# Wider grooves, sawn in several passes, keep GROOVE_RK. "" switches it off.
+GROOVE_RK_KERF = "NoWRK"
 
 # How each end of a groove is entered, EM in <109 \Nuten\. "Depth" (MOD0)
 # has the full depth right at the end point, so the blade's arc runs past it
@@ -1618,22 +1627,28 @@ def groove_feature(g, lx, ly, lz):
 
     # The run is always written towards +X or +Y, so which edge to programme
     # follows straight from RK: see the note on GROOVE_RK above.
+    # A groove one blade wide is sawn down its centre line: see GROOVE_RK_KERF.
+    nb = min(w, h)
+    rk = GROOVE_RK
+    if GROOVE_RK_KERF and abs(nb - SAW_KERF) <= GEO_TOL:
+        rk = GROOVE_RK_KERF
     if h < w:
-        dirn, nb, run = "X", h, w
-        if GROOVE_RK == "NoWRK":
+        dirn, run = "X", w
+        if rk == "NoWRK":
             edge = 0.5 * (g.lo[1] + g.hi[1])
         else:
-            edge = g.lo[1] if GROOVE_RK == "WRKR" else g.hi[1]
+            edge = g.hi[1] if rk == "WRKR" else g.lo[1]
         xa, ya, xe, ye = g.lo[0], edge, g.hi[0], edge
     else:
-        dirn, nb, run = "Y", w, h
-        if GROOVE_RK == "NoWRK":
+        dirn, run = "Y", h
+        if rk == "NoWRK":
             edge = 0.5 * (g.lo[0] + g.hi[0])
         else:
-            edge = g.hi[0] if GROOVE_RK == "WRKR" else g.lo[0]
+            edge = g.lo[0] if rk == "WRKR" else g.hi[0]
         xa, ya, xe, ye = edge, g.lo[1], edge, g.hi[1]
 
     return {"t": "groove", "up": up, "dirn": dirn, "nb": nb, "run": run,
+            "rk": rk,
             "ti": (lz - z) if up else z,
             "xa": xa, "ya": ya, "xe": xe, "ye": ye,
             "low": (GROOVE_MIN_Y > 0 and dirn == "X"
@@ -1847,7 +1862,7 @@ def macro(feat, dia, lz):
             ("XA", fnum(feat["xa"])), ("YA", fnum(feat["ya"])), ("WI", "0"),
             ("XE", fnum(feat["xe"])), ("YE", fnum(feat["ye"])),
             ("NB", fnum(dia)),
-            ("RK", GROOVE_RK),
+            ("RK", feat.get("rk", GROOVE_RK)),
             ("EM", feat.get("em", EM_LENGTH)),
             ("AD", "0"),
             ("TI", fnum(feat["ti"])),

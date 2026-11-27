@@ -364,6 +364,7 @@ SAW_ALONG = "X"           # directions the saw can run: "X", "Y" or "XY"
 GROOVE_MAX_WIDTH = 40.0   # wider flat cavities are pockets, not grooves
 GROOVE_MIN_Y = 50.0       # keep grooves this far from the lower edge, mm
 GROOVE_RK = "WRKR"        # which side of the programmed edge the groove lies
+GROOVE_RK_KERF = "NoWRK"  # one blade wide: sawn down its centre line
 ```
 
 A groove is rejected and reported if it runs a direction the saw cannot, is
@@ -390,7 +391,7 @@ lower edges. On a 600 × 300 panel, a groove modelled at Y 20…24 in the face
 comes out as
 
 ```
-<109 \Nuten\   XA="0"  YA="276"  XE="600"  YE="276"  NB="4"   (face up, turned end for end)
+<109 \Nuten\   XA="0"  YA="278"  XE="600"  YE="278"  NB="4"  RK="NoWRK"   (face up, turned end for end)
 ```
 
 This ranks after reaching every bore and before the grip. Of two setups, the
@@ -398,21 +399,31 @@ groove goes to the one that keeps it clear. When no plan keeps it clear (one
 groove near each edge, or a panel too narrow), it is cut where it is and
 `INFO` says so. `GROOVE_MIN_Y = 0` switches the rule off.
 
-**woodWOP programs a groove by one of its edges, not down its middle.**
-`XA/YA`…`XE/YE` is one edge and `RK` offsets the blade a full `NB` to one
-side. With `RK="WRKR"` the groove lies on the +Y side of a run towards +X.
-This is checked against `Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr`, a
-woodWOP 9.0.152 program for the part that `Examples/Meshes/472x420.gltf`
-holds as a model: a groove occupying Y 410…414 is written
+**A groove one blade wide is sawn down its centre line.** When the groove is
+exactly `SAW_KERF` wide it takes a single pass, so `XA/YA`…`XE/YE` is its
+centre line and `RK="NoWRK"` (`GROOVE_RK_KERF`). There is no side to get
+wrong. Checked in woodWOP on a cabinet whose 4 mm back-panel groove lies at
+Y 440.5…444.5 of a 1401 × 451 top:
 
 ```
-<109 \Nuten\   XA="75"  YA="410"  XE="_BSX"  YE="410"  NB="8"  RK="WRKR"
+<109 \Nuten\   XA="8.5"  YA="442.5"  XE="1392.5"  YE="442.5"  NB="4"  RK="NoWRK"
 ```
 
-Set `GROOVE_RK` to `"WRKL"` for the other side, or to `"NoWRK"` to programme
-the centre line instead. The side convention is confirmed only for a run
-towards +X, the direction this saw runs; the +Y case, reachable by setting
-`SAW_ALONG = "XY"`, is derived by rotating that result and is unverified.
+**A wider groove is programmed by one of its edges.** `XA/YA`…`XE/YE` is one
+edge and `RK` offsets the blade a full `NB` to one side. `RK="WRKR"`
+(`GROOVE_RK`) puts the blade on the right of the direction of travel, as it
+does for the outline: the groove lies on the −Y side of a run towards +X,
+and the programmed line is its upper edge. A run towards +Y has it on the +X
+side. Set `GROOVE_RK` to `"WRKL"` for the other side, or to `"NoWRK"` to
+programme every groove down its centre line. `GROOVE_RK_KERF = ""` sends
+blade-wide grooves through `GROOVE_RK` as well.
+
+The side for `WRKR` was first taken from
+`Examples/WoodWop_export/0_472x420-F_1_Standard-mode.mpr` and
+`Examples/Meshes/472x420.gltf` and read as +Y. Those two files describe
+different grooves (8 × 7 in the program, 4 × 9 in the model), and woodWOP
+put real grooves 4 mm off, on the other side of the line. A multi-pass
+groove with `WRKR` has not been checked on the machine yet.
 
 **Each end of a groove picks its own insert mode.** `EM` is woodWOP's insert
 mode. `MOD0` (*Depth*) reaches full depth right at the end point, so the
@@ -932,7 +943,8 @@ place the piece for the gripper.
 | `FIRST_ID` | 1 | the number of the first program when `ID` is unwired |
 | `SAW_KERF` | 4.0 | grooving blade thickness; a narrower groove cannot be cut |
 | `SAW_ALONG` | `"X"` | the directions the saw unit can run |
-| `GROOVE_RK` | `"WRKR"` | which side of the programmed edge the groove lies |
+| `GROOVE_RK` | `"WRKR"` | which side of the programmed edge a groove wider than the blade lies; `WRKR` = right of travel |
+| `GROOVE_RK_KERF` | `"NoWRK"` | `RK` for a groove exactly `SAW_KERF` wide, programmed down its centre line; `""` = use `GROOVE_RK` |
 | `GROOVE_MIN_Y` | 50.0 | turn the piece so no groove lies closer than this to the lower edge, where the gripper holds; 0 = off |
 | `POCKET` | on | mill big openings as `<112 Tasche>` — see [Pockets](#pockets) |
 | `ROUTER_TOOL` | `"1"` | the router's tool number, for pockets and outlines |

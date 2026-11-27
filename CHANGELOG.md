@@ -9,6 +9,27 @@ refer to the tooling in `Tools/`; the reference material in `Docs/` and
 
 Repository: https://github.com/Svi-ra/CNC-fitting
 
+## [0.26.0] — 2026-11-27
+
+### Fixed
+
+- **`gh_brep2mpr.py`: grooves landed on the wrong side of their line.**
+  `RK="WRKR"` puts the blade on the right of the direction of travel, so a
+  groove run towards +X lies on the −Y side of `YA` — the code had it the
+  other way round. The back-panel grooves of a cabinet came out 4 mm
+  towards the middle of the top and sides. A groove wider than the blade
+  now has its upper edge programmed (its left edge for a run towards +Y).
+  The 472x420 pair that settled the side first describes two different
+  grooves and could not tell it.
+
+### Added
+
+- **`gh_brep2mpr.py`: `GROOVE_RK_KERF` (`"NoWRK"`).** A groove exactly
+  `SAW_KERF` wide is sawn in one pass, so it is now programmed down its
+  centre line with `RK="NoWRK"` — no side to get wrong. Checked in woodWOP:
+  a 4 mm groove at Y 440.5…444.5 written `YA="442.5"` lands there. Wider
+  grooves keep `GROOVE_RK`; `""` switches this off.
+
 ## [0.25.2] — 2026-11-26
 
 ### Changed
